@@ -314,6 +314,8 @@ async function populateSaleForm(saleId) {
             tableBody.appendChild(row);
         });
 
+        calculateTotal();
+
         // Add status-specific fields with current data
         await addStatusSpecificFields(sale);
         
@@ -695,6 +697,7 @@ function calculateTotal() {
 async function addStatusSpecificFields(sale) {
     const container = document.getElementById('statusFieldsContainer');
     container.innerHTML = '';
+    calculateTotal();
     
     if (sale.status_pesanan === 'diambil') {
         const takers = await getTakerList();
