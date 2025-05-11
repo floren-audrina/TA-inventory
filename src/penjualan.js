@@ -3,7 +3,6 @@ import { processEntry, updateVariantStock } from './import.js';
 
 // ========== Global Variables ==========
 let saleModal;
-let currentSaleId = 'draft';
 
 // ========== Utility Functions ==========
 function getStatusColor(status) {
@@ -1255,7 +1254,7 @@ async function renderHistoryTable() {
                 status_pesanan,
                 tanggal_diambil,
                 pihak_pengambil,
-                tanggal_pembayaran,
+                tanggal_dibayar,
                 total_dibayarkan,
                 alat_pembayaran,
                 items: item_pesanan_penjualan(
@@ -1264,6 +1263,7 @@ async function renderHistoryTable() {
                         varian,
                         produk:id_produk(nama)
                     ),
+                    qty_dipesan
                 )
             `)
             .eq('status_pesanan', 'selesai')
@@ -1277,8 +1277,8 @@ async function renderHistoryTable() {
             orders.forEach(order => {
                 // Format dates
                 const formattedOrderDate = new Date(order.tanggal_pesan).toLocaleDateString('id-ID');
-                const formattedReceivedDate = order.tanggal_diambil ? new Date(order.tanggal_diambil).toLocaleDateString('id-ID') : '-';
-                const formattedPaymentDate = order.tanggal_pembayaran ? new Date(order.tanggal_pembayaran).toLocaleDateString('id-ID') : '-';
+                const formattedTakenDate = order.tanggal_diambil ? new Date(order.tanggal_diambil).toLocaleDateString('id-ID') : '-';
+                const formattedPaymentDate = order.tanggal_dibayar ? new Date(order.tanggal_dibayar).toLocaleDateString('id-ID') : '-';
                 
                 // Calculate total quantities
                 const totalOrdered = order.items.reduce((sum, item) => sum + item.qty_dipesan, 0);
@@ -1288,11 +1288,10 @@ async function renderHistoryTable() {
                 row.innerHTML = `
                     <td>${order.id}</td>
                     <td>${formattedOrderDate}</td>
-                    <td>${order.supplier.perusahaan}</td>
-                    <td>${order.lokasi_penerimaan || '-'}</td>
+                    <td>${order.bakul.nama}</td>
+                    <td>${formattedTakenDate}</td>
+                    <td>${order.pihak_pengambil || '-'}</td>
                     <td>${totalOrdered}</td>
-                    <td>${totalReceived}</td>
-                    <td>${formattedReceivedDate}</td>
                     <td>${formatCurrency(order.total_dibayarkan)}</td>
                     <td>${formattedPaymentDate}</td>
                     <td>${order.alat_pembayaran || '-'}</td>
@@ -1325,22 +1324,24 @@ async function showOrderDetails(orderId) {
     try {
         // Fetch the specific order with its items
         const { data: order, error } = await supabase
-            .from('pesanan_pembelian')
+            .from('pesanan_penjualan')
             .select(`
                 id,
                 tanggal_pesan,
-                supplier: id_supplier(perusahaan),
+                bakul: id_bakul(nama),
                 status_pesanan,
-                tanggal_diterima,
-                lokasi_penerimaan,
-                tanggal_pembayaran,
+                tanggal_diambil,
+                pihak_pengambil,
+                tanggal_dibayar,
                 total_dibayarkan,
                 alat_pembayaran,
-                items: item_pesanan_pembelian(
+                items: item_pesanan_penjualan(
                     id,
-                    produk: id_produk(nama, varian),
-                    qty_dipesan,
-                    qty_diterima
+                    produk_varian: id_varian(
+                        varian,
+                        produk:id_produk(nama)
+                    ),
+                    qty_dipesan
                 )
             `)
             .eq('id', orderId)
@@ -1364,13 +1365,13 @@ async function showOrderDetails(orderId) {
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <p><strong>Tanggal Pesan:</strong> ${formatDate(order.tanggal_pesan)}</p>
-                                    <p><strong>Supplier:</strong> ${order.supplier.perusahaan}</p>
-                                    <p><strong>Lokasi Penerimaan:</strong> ${order.lokasi_penerimaan || '-'}</p>
+                                    <p><strong>Supplier:</strong> ${order.bakul.nama}</p>
+                                    <p><strong>Lokasi Penerimaan:</strong> ${order.pihak_pengambil || '-'}</p>
                                 </div>
                                 <div class="col-md-6">
-                                    <p><strong>Tanggal Diterima:</strong> ${formatDate(order.tanggal_diterima)}</p>
+                                    <p><strong>Tanggal Diterima:</strong> ${formatDate(order.tanggal_diambil)}</p>
                                     <p><strong>Total Dibayarkan:</strong> ${formatCurrency(order.total_dibayarkan)}</p>
-                                    <p><strong>Pembayaran:</strong> ${order.alat_pembayaran || '-'} (${formatDate(order.tanggal_pembayaran)})</p>
+                                    <p><strong>Pembayaran:</strong> ${order.alat_pembayaran || '-'} (${formatDate(order.tanggal_dibayar)})</p>
                                 </div>
                             </div>
                             <div class="table-responsive">
@@ -1379,19 +1380,15 @@ async function showOrderDetails(orderId) {
                                         <tr>
                                             <th>Produk</th>
                                             <th>Varian</th>
-                                            <th>Dipesan</th>
-                                            <th>Diterima</th>
-                                            <th>Selisih</th>
+                                            <th>Kuantitas</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         ${order.items.map(item => `
                                             <tr>
-                                                <td>${item.produk.nama}</td>
-                                                <td>${item.produk.varian || '-'}</td>
+                                                <td>${item.produk_varian.produk.nama}</td>
+                                                <td>${item.produk_varian.varian || '-'}</td>
                                                 <td>${item.qty_dipesan}</td>
-                                                <td>${item.qty_diterima || 0}</td>
-                                                <td>${item.qty_dipesan - (item.qty_diterima || 0)}</td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -1399,8 +1396,6 @@ async function showOrderDetails(orderId) {
                                         <tr>
                                             <td colspan="2" class="text-end"><strong>Total:</strong></td>
                                             <td><strong>${order.items.reduce((sum, item) => sum + item.qty_dipesan, 0)}</strong></td>
-                                            <td><strong>${order.items.reduce((sum, item) => sum + (item.qty_diterima || 0), 0)}</strong></td>
-                                            <td><strong>${order.items.reduce((sum, item) => sum + (item.qty_dipesan - (item.qty_diterima || 0)), 0)}</strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -1716,18 +1711,18 @@ async function fetchOrderData(orderId) {
 // ========== Initialization ==========
 document.addEventListener('DOMContentLoaded', async () => {
     saleModal = new bootstrap.Modal(document.getElementById('saleModal'));
+    const tabs = document.getElementById('penjualanTabs');
+    const addDataBtn = document.getElementById('addSaleBtn');
+    const ongoingTab = document.getElementById('ongoing-tab');
+    const historyTab = document.getElementById('history-tab');
     
-    // Setup event listeners
-    document.getElementById('addSaleBtn').addEventListener('click', () => openSaleModal('add'));
-    document.getElementById('addProductBtn').addEventListener('click', addItemRow);
-    
-    // Tab switching
-    document.getElementById('ongoing-tab').addEventListener('click', () => fetchSales('ongoing'));
-    document.getElementById('history-tab').addEventListener('click', () => fetchSales('history'));
 
     // Load initial data
     await loadBakuls();
-    await renderOngoingSales();
+    // await renderOngoingSales();
+    initPage();
+
+    document.getElementById('addProductBtn').addEventListener('click', addItemRow);
 
     // Cancel Order (dipesan)
     document.addEventListener('click', async (e) => {
@@ -1795,6 +1790,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const script2 = document.createElement('script');
     script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
     document.body.appendChild(script2);
+
+    function initPage() {
+        renderOngoingSales();
+        
+        if (addDataBtn) {
+            addDataBtn.addEventListener('click', () => openSaleModal('add'));
+        }
+        
+        if (ongoingTab) ongoingTab.addEventListener('click', renderOngoingSales);
+        if (historyTab) historyTab.addEventListener('click', renderHistoryTable);
+    }
 });
 
 // // ========== Global Functions ==========

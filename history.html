@@ -51,6 +51,22 @@
         .modal-header {
             border-bottom: none;
         }
+        /* Add this to your existing style section */
+        #backButton {
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        #backButton:hover {
+            background-color: #0d6efd;
+            transform: translateX(-2px);
+        }
     </style>
 </head>
 <body>
@@ -71,7 +87,13 @@
     </script>
 
     <div class="container mt-4" id="main-content">
-        <h2 class="mb-4">Riwayat Stok</h2>
+        <div class="d-flex align-items-center mb-4">
+            <button id="backButton" class="btn btn-outline-secondary me-3" 
+                    data-bs-toggle="tooltip" data-bs-placement="right" title="Kembali">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            <h2 class="mb-0">Riwayat Stok</h2>
+        </div>
 
         <div class="d-flex justify-content-between mb-3">
             <!-- Add Button to Open Modal -->

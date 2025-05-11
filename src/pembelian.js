@@ -3,7 +3,6 @@ import { processEntry, updateVariantStock } from './import.js';
 
 // ========== Global Variables ==========
 let orderModal;
-let currentStatus = 'draft';
 
 // ========== Non-Async Utility Functions ==========
 function getStatusColor(status) {
@@ -924,7 +923,7 @@ async function openOrderModal(mode = 'add', orderId = null) {
         if (statusToggleContainer) statusToggleContainer.style.display = 'none';
         if (statusBadge) {
             statusBadge.style.display = 'inline-block';
-            statusBadge.textContent = 'dipesan';
+            statusBadge.textContent = 'draft';
             statusBadge.className = `badge bg-${getStatusColor('dipesan')}`;
         }
         modalTitle.textContent = 'Tambah Pesanan Pembelian';
@@ -1596,7 +1595,7 @@ async function showOrderDetails(orderId) {
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize variables
     const pembelianTabs = document.getElementById('pembelianTabs');
-    const addDataBtn = document.querySelector('.btn-primary');
+    const addDataBtn = document.getElementById('addbtn');
     const ongoingTab = document.getElementById('ongoing-tab');
     const historyTab = document.getElementById('history-tab');
 

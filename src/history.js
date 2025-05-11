@@ -549,6 +549,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
     // Initialize components
     await loadTipeRiwayatEnum();
     await fetchStockHistory(variantId);
