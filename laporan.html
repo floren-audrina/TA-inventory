@@ -28,7 +28,7 @@
     
                 // Load the navbar.js script after the navbar content is injected
                 const script = document.createElement('script');
-                script.src = '../backend/navbar.js';
+                script.src = './src/navbar.js';
                 script.type = 'module'; // Ensure the script is treated as a module
                 document.body.appendChild(script);
             })
@@ -99,6 +99,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script type="module" src="../backend/laporan.js"></script>
+  <script type="module" src="./src/laporan.js"></script>
 </body>
 </html>

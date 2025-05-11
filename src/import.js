@@ -1,4 +1,4 @@
-import supabase from '../database/db_conn.js';
+import supabase from './db_conn.js';
 
 // Function to update the stock in the variant table
 async function updateVariantStock(variantId, quantity, tipeRiwayat) {

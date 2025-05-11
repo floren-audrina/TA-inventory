@@ -1,13 +1,13 @@
-import supabase from '../database/db_conn.js';
+import supabase from './db_conn.js';
 
 // Function to reset the form
 function resetForm() {
-    const bakulForm = document.getElementById('bakulForm');
-    if (bakulForm) {
-        bakulForm.reset(); // Reset all form fields
-        bakulForm.dataset.bakulId = ''; // Clear the supplier ID
-        document.getElementById('bakulModalLabel').textContent = 'Tambah Bakul'; // Reset modal title
-        document.getElementById('submitButton').textContent = 'Tambah'; // Reset submit button text
+    const supplierForm = document.getElementById('supplierForm');
+    if (supplierForm) {
+        supplierForm.reset(); // Reset all form fields
+        supplierForm.dataset.supplierId = ''; // Clear the supplier ID
+        document.getElementById('supplierModalLabel').textContent = 'Add Supplier'; // Reset modal title
+        document.getElementById('submitButton').textContent = 'Add Supplier'; // Reset submit button text
     }
 }
 
@@ -88,36 +88,97 @@ async function populateKotaDropdown() {
 }
 
 // Function to handle form submission (for both add and edit)
+// async function handleFormSubmit() {
+//     const perusahaan = document.getElementById('perusahaan').value;
+//     const sales = document.getElementById('sales').value;
+//     const no_hp = document.getElementById('no_hp').value;
+//     const id_kota = document.getElementById('kota').value;
+//     const supplierId = document.getElementById('supplierForm').dataset.supplierId;
+
+//     try {
+//         if (supplierId) {
+//             // Update existing supplier
+//             const { data, error } = await supabase
+//                 .from('supplier')
+//                 .update({
+//                     perusahaan: perusahaan,
+//                     sales: sales,
+//                     no_hp: no_hp,
+//                     id_kota: id_kota,
+//                 })
+//                 .eq('id', supplierId);
+
+//             if (error) {
+//                 throw error;
+//             }
+
+//             showToast('Supplier updated successfully!', 'success');
+//         } else {
+//             // Insert new supplier
+//             const { data, error } = await supabase
+//                 .from('supplier')
+//                 .insert([
+//                     {
+//                         perusahaan: perusahaan,
+//                         sales: sales,
+//                         no_hp: no_hp,
+//                         id_kota: id_kota,
+//                     },
+//                 ]);
+
+//             if (error) {
+//                 throw error;
+//             }
+
+//             showToast('Supplier added successfully!', 'success');
+//         }
+
+//         // Close the modal
+//         const modal = bootstrap.Modal.getInstance(document.getElementById('supplierModal'));
+//         modal.hide();
+
+//         // Refresh the supplier list
+//         await fetchSuppliers();
+//     } catch (error) {
+//         console.error('Error saving supplier:', error.message);
+//         showToast('Failed to save supplier. Please try again.', 'error');
+//     }
+// }
+
+// Function to handle form submission (for both add and edit)
 async function handleFormSubmit() {
-    const nama = document.getElementById('nama').value;
+    const perusahaan = document.getElementById('perusahaan').value;
+    const cp = document.getElementById('cp').value;
     const no_hp = document.getElementById('no_hp').value;
     const id_kota = document.getElementById('kota').value;
-    const bakulId = document.getElementById('bakulForm').dataset.bakulId;
+    const supplierId = document.getElementById('supplierForm').dataset.supplierId;
 
     try {
-        if (bakulId) {
+        if (supplierId) {
             // Update existing supplier
             const { data, error } = await supabase
-                .from('bakul')
+                .from('supplier')
                 .update({
-                    nama: nama,
+                    perusahaan: perusahaan,
+                    cp: cp,
                     no_hp: no_hp,
                     id_kota: id_kota,
                 })
-                .eq('id', bakulId);
+                .eq('id', supplierId);
 
             if (error) {
                 throw error;
             }
 
-            showToast('Data bakul berhasil diperbarui!', 'success');
+            showToast('Supplier updated successfully!', 'success');
         } else {
             // Insert new supplier
             const { data, error } = await supabase
-                .from('bakul')
+                .from('supplier')
                 .insert([
                     {
-                        nama: nama,
+                        perusahaan: perusahaan,
+                        cp: cp,
                         no_hp: no_hp,
                         id_kota: id_kota,
                     },
@@ -127,29 +188,29 @@ async function handleFormSubmit() {
                 throw error;
             }
 
-            showToast('Data bakul berhasil ditambahkan!', 'success');
+            showToast('Supplier added successfully!', 'success');
         }
 
         // Close the modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('bakulModal'));
+        const modal = bootstrap.Modal.getInstance(document.getElementById('supplierModal'));
         modal.hide();
 
         // Refresh the supplier list
-        await fetchBakul();
+        await fetchSuppliers();
     } catch (error) {
         console.error('Error saving supplier:', error.message);
-        showToast('Gagal menyimpan data bakul, silahkan coba lagi.', 'error');
+        showToast('Failed to save supplier. Please try again.', 'error');
     }
 }
 
 // Function to edit a supplier
-async function editBakul(bakulId) {
+async function editSupplier(supplierId) {
     try {
         // Fetch supplier data by ID
         const { data, error } = await supabase
-            .from('bakul')
+            .from('supplier')
             .select('*')
-            .eq('id', bakulId)
+            .eq('id', supplierId)
             .single();
 
         if (error) {
@@ -157,71 +218,73 @@ async function editBakul(bakulId) {
         }
 
         // Populate the form with the fetched data
-        document.getElementById('nama').value = data.nama;
+        document.getElementById('perusahaan').value = data.perusahaan;
+        document.getElementById('cp').value = data.cp;
         document.getElementById('no_hp').value = data.no_hp;
         document.getElementById('kota').value = data.id_kota;
 
         // Change the modal title and submit button text
-        document.getElementById('bakulModalLabel').textContent = 'Edit Bakul';
-        document.getElementById('submitButton').textContent = 'Edit';
+        document.getElementById('supplierModalLabel').textContent = 'Edit Supplier';
+        document.getElementById('submitButton').textContent = 'Update Supplier';
 
         // Store the supplier ID in a hidden field or data attribute
-        document.getElementById('bakulForm').dataset.bakulId = bakulId;
+        document.getElementById('supplierForm').dataset.supplierId = supplierId;
 
         // Open the modal
-        const modal = new bootstrap.Modal(document.getElementById('bakulModal'));
+        const modal = new bootstrap.Modal(document.getElementById('supplierModal'));
         modal.show();
     } catch (error) {
         console.error('Error fetching supplier:', error.message);
-        showToast('Gagal mengambil data bakul, silahkan coba lagi.', 'error');
+        showToast('Failed to load supplier data. Please try again.', 'error');
     }
 }
 
 // Function to delete a supplier
-async function deleteBakul(bakulId) {
-    if (confirm('Apakah Anda yakin ingin menghapus data bakul ini?')) {
+async function deleteSupplier(supplierId) {
+    if (confirm('Are you sure you want to delete this supplier?')) {
         try {
             const { data, error } = await supabase
-                .from('bakul')
+                .from('supplier')
                 .delete()
-                .eq('id', bakulId);
+                .eq('id', supplierId);
 
             if (error) {
                 throw error;
             }
 
             // Refresh the supplier list
-            await fetchBakul();
-            showToast('Data bakul berhasil dihapus!', 'success');
+            await fetchSuppliers();
+            showToast('Supplier deleted successfully!', 'success');
         } catch (error) {
             console.error('Error deleting supplier:', error.message);
-            showToast('Gagal menghapus data bakul, silahkan coba lagi.', 'error');
+            showToast('Failed to delete supplier. Please try again.', 'error');
         }
     }
 }
 
 // Function to fetch and display suppliers
-async function fetchBakul() {
-    const bakulTableBody = document.getElementById('bakulTableBody');
+async function fetchSuppliers() {
+    const supplierTableBody = document.getElementById('supplierTableBody');
 
-    if (!bakulTableBody) return;
+    if (!supplierTableBody) return;
 
     try {
-        bakulTableBody.innerHTML = `
+        supplierTableBody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center">
+                <td colspan="6" class="text-center">
                     <div class="spinner-border spinner-border-sm" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    Memuat bakul...
+                    Memuat supplier...
                 </td>
             </tr>`;
-        // Fetch data from the "bakul" table (join with "kota" table to get city names)
+        // Fetch data from the "supplier" table (join with "kota" table to get city names)
         const { data, error } = await supabase
-            .from('bakul')
+            .from('supplier')
             .select(`
                 id,
-                nama,
+                perusahaan,
+                cp,
                 no_hp,
                 kota: id_kota (kota)
             `)
@@ -232,42 +295,44 @@ async function fetchBakul() {
         }
 
         // Clear existing table rows
-        bakulTableBody.innerHTML = '';
+        supplierTableBody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            modalProductTable.innerHTML = `
+            supplierTableBody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center text-muted">
-                        Tidak ada bakul ditemukan
+                    <td colspan="6" class="text-center text-muted">
+                        Tidak ada supplier ditemukan
                     </td>
                 </tr>`;
             return;
         }
 
-        // Populate the table with bakul data
-        data.forEach((bakul) => {
+        // Populate the table with supplier data
+        data.forEach((supplier) => {
             const row = document.createElement('tr');
 
             row.innerHTML = `
-                <td>${bakul.id}</td>
-                <td>${bakul.nama}</td>
-                <td>${bakul.no_hp ? bakul.no_hp : '-'}</td> <!-- Handle null for no_hp -->
-                <td>${bakul.kota?.kota ? bakul.kota.kota : '-'}</td> <!-- Handle null for kota -->
+                <td>${supplier.id}</td>
+                <td>${supplier.perusahaan || '-'}</td>
+                <td>${supplier.cp}</td>
+                <td>${supplier.no_hp || '-'}</td>
+                <td>${supplier.kota.kota}</td>
                 <td>
-                    <button class="btn btn-primary btn-sm" onclick="editBakul(${bakul.id})">Edit</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteBakul(${bakul.id})">Delete</button>
+                    <button class="btn btn-primary btn-sm" onclick="editSupplier(${supplier.id})">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSupplier(${supplier.id})">Delete</button>
                 </td>
             `;
 
-            bakulTableBody.appendChild(row);
+            supplierTableBody.appendChild(row);
         });
     } catch (error) {
-        console.error('Error fetching bakul:', error.message);
-        showToast('Gagal menampilkan data bakul, silahkan coba lagi.', 'error');
+        console.error('Error fetching suppliers:', error.message);
+        showToast('Failed to load suppliers. Please try again.', 'error');
     }
 }
 
 // filter functions
+// Global filter state
 const activeFilters = {
     type: null,
     kota: null
@@ -361,7 +426,7 @@ function applyFilters() {
     }
 
     // Apply filters to the table
-    filterBakuls();
+    filterSuppliers();
 }
 
 // Reset all filters
@@ -382,25 +447,26 @@ function resetFilters() {
 }
 
 // Filter suppliers based on active filters
-async function filterBakuls() {
-    const tbody = document.getElementById('bakulTableBody');
+async function filterSuppliers() {
+    const tbody = document.getElementById('supplierTableBody');
     
     try {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center">
+                <td colspan="6" class="text-center">
                     <div class="spinner-border spinner-border-sm" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    Memuat bakul...
+                    Memuat supplier...
                 </td>
             </tr>`;
 
         let query = supabase
-            .from('bakul')
+            .from('supplier')
             .select(`
                 id, 
-                nama,
+                perusahaan, 
+                cp, 
                 no_hp,
                 kota:id_kota(kota)
             `)
@@ -411,19 +477,19 @@ async function filterBakuls() {
             query = query.eq('id_kota', activeFilters.kota);
         }
 
-        const { data: bakuls, error } = await query;
+        const { data: suppliers, error } = await query;
         if (error) throw error;
 
         // Update the table
-        updateBakulTable(bakuls);
+        updateSupplierTable(suppliers);
 
     } catch (error) {
-        console.error('Error filtering bakuls:', error);
-        showToast('Gagal memfilter bakul', 'error');
+        console.error('Error filtering suppliers:', error);
+        showToast('Gagal memfilter supplier', 'error');
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-danger">
-                    Gagal memuat data bakul
+                <td colspan="6" class="text-center text-danger">
+                    Gagal memuat data supplier
                 </td>
             </tr>`;
     }
@@ -434,23 +500,24 @@ async function performSearch() {
     const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
     
     try {
-        const tbody = document.getElementById('bakulTableBody');
+        const tbody = document.getElementById('supplierTableBody');
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center">
+                <td colspan="6" class="text-center">
                     <div class="spinner-border spinner-border-sm" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    Memuat bakul...
+                    Memuat supplier...
                 </td>
             </tr>`;
 
         // Base query with kota filter if active
         let baseQuery = supabase
-            .from('bakul')
+            .from('supplier')
             .select(`
                 id, 
-                nama,
+                perusahaan, 
+                cp, 
                 no_hp,
                 kota:id_kota(kota)
             `)
@@ -461,15 +528,15 @@ async function performSearch() {
             baseQuery = baseQuery.eq('id_kota', activeFilters.kota);
         }
 
-        // 1. Search bakuls by direct fields (nama, no_hp)
+        // 1. Search suppliers by direct fields (perusahaan, cp, no_hp)
         const directSearchQuery = baseQuery;
         if (searchTerm) {
-            directSearchQuery.or(`nama.ilike.%${searchTerm}%,no_hp.ilike.%${searchTerm}%`);
+            directSearchQuery.or(`perusahaan.ilike.%${searchTerm}%,cp.ilike.%${searchTerm}%,no_hp.ilike.%${searchTerm}%`);
         }
-        const { data: bakulsDirect, error: directError } = await directSearchQuery;
+        const { data: suppliersDirect, error: directError } = await directSearchQuery;
 
-        // 2. Search bakuls by kota name (only if searching and no kota filter already applied)
-        let bakulsByKota = [];
+        // 2. Search suppliers by kota name (only if searching and no kota filter already applied)
+        let suppliersByKota = [];
         if (searchTerm && !(activeFilters.type === 'kota' && activeFilters.kota)) {
             const { data: kotaResults, error: kotaError } = await supabase
                 .from('kota')
@@ -479,7 +546,7 @@ async function performSearch() {
             if (!kotaError && kotaResults?.length > 0) {
                 const kotaIds = kotaResults.map(k => k.id);
                 const { data, error } = await baseQuery.in('id_kota', kotaIds);
-                if (!error) bakulsByKota = data || [];
+                if (!error) suppliersByKota = data || [];
             }
         }
 
@@ -487,59 +554,60 @@ async function performSearch() {
         let resultsToDisplay;
         if (searchTerm) {
             const combinedResults = [
-                ...(bakulsDirect || []),
-                ...bakulsByKota
+                ...(suppliersDirect || []),
+                ...suppliersByKota
             ];
-            resultsToDisplay = combinedResults.reduce((acc, bakul) => {
-                if (!acc.some(b => b.id === bakul.id)) {
-                    acc.push(bakul);
+            resultsToDisplay = combinedResults.reduce((acc, supplier) => {
+                if (!acc.some(s => s.id === supplier.id)) {
+                    acc.push(supplier);
                 }
                 return acc;
             }, []);
         } else {
-            resultsToDisplay = bakulsDirect || [];
+            resultsToDisplay = suppliersDirect || [];
         }
 
         // Update the table with final results
-        updateBakulTable(resultsToDisplay);
+        updateSupplierTable(resultsToDisplay);
 
     } catch (error) {
-        console.error('Error searching bakuls:', error);
-        showToast('Gagal melakukan pencarian bakul', 'error');
-        document.getElementById('bakulTableBody').innerHTML = `
+        console.error('Error searching suppliers:', error);
+        showToast('Gagal melakukan pencarian supplier', 'error');
+        document.getElementById('supplierTableBody').innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-danger">
-                    Gagal memuat data bakul
+                <td colspan="6" class="text-center text-danger">
+                    Gagal memuat data supplier
                 </td>
             </tr>`;
     }
 }
 
-// Update bakul table display
-function updateBakulTable(bakuls) {
-    const tbody = document.getElementById('bakulTableBody');
+// Update supplier table display
+function updateSupplierTable(suppliers) {
+    const tbody = document.getElementById('supplierTableBody');
     tbody.innerHTML = '';
 
-    if (!bakuls || bakuls.length === 0) {
+    if (!suppliers || suppliers.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted">
-                    Tidak ada bakul yang cocok dengan pencarian
+                <td colspan="6" class="text-center text-muted">
+                    Tidak ada supplier yang cocok dengan pencarian
                 </td>
             </tr>`;
         return;
     }
 
-    bakuls.forEach(bakul => {
+    suppliers.forEach(supplier => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${bakul.id}</td>
-            <td>${bakul.nama || '-'}</td>
-            <td>${bakul.no_hp || '-'}</td>
-            <td>${bakul.kota?.kota || '-'}</td>
+            <td>${supplier.id}</td>
+            <td>${supplier.perusahaan || '-'}</td>
+            <td>${supplier.cp}</td>
+            <td>${supplier.no_hp || '-'}</td>
+            <td>${supplier.kota?.kota || '-'}</td>
             <td>
-                <button class="btn btn-primary btn-sm" onclick="editBakul(${bakul.id})">Edit</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteBakul(${bakul.id})">Delete</button>
+                <button class="btn btn-primary btn-sm" onclick="editSupplier(${supplier.id})">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteSupplier(${supplier.id})">Delete</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -567,29 +635,30 @@ function updateSearchIcon() {
 function clearSearch() {
     document.getElementById('searchInput').value = '';
     updateSearchIcon();
-    filterBakuls(); // Maintain active filters when clearing search
+    filterSuppliers(); // Maintain active filters when clearing search
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Fetch cities from the "kota" table and populate the dropdown
     await populateKotaDropdown();
-    await fetchBakul();
+    await fetchSuppliers();
 
+    // Initialize filters
     initializeFilters();
 
     // Handle form submission
-    const bakulForm = document.getElementById('bakulForm');
-    if (bakulForm) {
-        bakulForm.addEventListener('submit', async (event) => {
+    const supplierForm = document.getElementById('supplierForm');
+    if (supplierForm) {
+        supplierForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             await handleFormSubmit();
         });
     }
 
     // Reset form when modal is hidden
-    const bakulModal = document.getElementById('bakulModal');
-    if (bakulModal) {
-        bakulModal.addEventListener('hidden.bs.modal', () => {
+    const supplierModal = document.getElementById('supplierModal');
+    if (supplierModal) {
+        supplierModal.addEventListener('hidden.bs.modal', () => {
             resetForm();
         });
     }
@@ -623,5 +692,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // Expose editProduct to the global scope
-window.editBakul = editBakul;
-window.deleteBakul = deleteBakul;
+window.editSupplier = editSupplier;
+window.deleteSupplier = deleteSupplier;

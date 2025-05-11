@@ -59,8 +59,8 @@
         
                     // Load the navbar.js script after the navbar content is injected
                     const script = document.createElement('script');
-                    script.src = '../backend/navbar.js';
-                    script.type = 'module'; // Ensure the script is treated as a module
+                    script.src = './src/navbar.js';
+                    script.type = 'module'; 
                     document.body.appendChild(script);
                 })
                 .catch(error => console.error('Error loading navbar:', error));
@@ -130,6 +130,6 @@
     </div>
 
     <!-- JavaScript files -->
-    <script type="module" src="../backend/dashboard.js"></script>
+    <script type="module" src="./src/dashboard.js"></script>
 </body>
 </html>

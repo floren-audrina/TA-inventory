@@ -103,7 +103,7 @@
     
                 // Load the navbar.js script after the navbar content is injected
                 const script = document.createElement('script');
-                script.src = '../backend/navbar.js';
+                script.src = './src/navbar.js';
                 script.type = 'module'; // Ensure the script is treated as a module
                 document.body.appendChild(script);
             })
@@ -115,7 +115,7 @@
             <h1>Pembelian</h1>
             <div>
                 <button class="btn btn-primary me-2">
-                    <i class="bi bi-plus"></i> Tambahkan data
+                    <i class="bi bi-plus"></i> Tambah Pembelian
                 </button>
                 <div class="btn-group">
                     <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
@@ -134,12 +134,12 @@
         <ul class="nav nav-tabs" id="pembelianTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="ongoing-tab" data-bs-toggle="tab" data-bs-target="#ongoing" type="button">
-                    Pesanan yang masih berlangsung
+                    Pesanan Aktif
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button">
-                    Riwayat
+                    Riwayat Pesanan
                 </button>
             </li>
         </ul>
@@ -262,6 +262,6 @@
         </div>
     </div>
 
-    <script type="module" src="../backend/pembelian.js"></script>
+    <script type="module" src="./src/pembelian.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-import supabase from '../database/db_conn.js';
+import supabase from './db_conn.js';
 
 // Main application logic
 document.addEventListener('DOMContentLoaded', async () => {

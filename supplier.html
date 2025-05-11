@@ -79,7 +79,7 @@
     
                 // Load the navbar.js script after the navbar content is injected
                 const script = document.createElement('script');
-                script.src = '../backend/navbar.js';
+                script.src = './src/navbar.js';
                 script.type = 'module'; // Ensure the script is treated as a module
                 document.body.appendChild(script);
             })
@@ -197,6 +197,6 @@
         </div>
     </div>
 
-    <script type="module" src="../backend/supplier.js"></script>
+    <script type="module" src="./src/supplier.js"></script>
 </body>
 </html>

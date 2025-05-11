@@ -1,4 +1,4 @@
-import supabase from '../database/db_conn.js'; // Import the Supabase client
+import supabase from './db_conn.js';
 
 // Handle form submission
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -20,6 +20,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     } else {
         // Redirect to dashboard on successful login
         console.log('User logged in:', data.user);
-        window.location.href = './product.html'; // Replace with your dashboard URL
+        window.location.href = '../product.html';
     }
 });
