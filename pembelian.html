@@ -35,7 +35,7 @@
         .table-container {
             margin-top: 20px;
         }
-        /* Status toggle styles */
+
         .status-toggle-container {
             display: flex;
             align-items: center;
@@ -155,8 +155,8 @@
 
             <!-- History Tab (Table) -->
             <div class="tab-pane fade table-container" id="history" role="tabpanel">
-                <table class="table table-striped">
-                    <thead>
+                <table class="table table-bordered table-hover">
+                    <thead class="table-light">
                         <tr>
                             <th>ID</th>
                             <th>Tgl. Pesan</th>
@@ -212,7 +212,7 @@
                                 <div class="row mb-3">
                                     <div class="col-md-6">
                                         <label for="orderDate" class="form-label">Tanggal Pemesanan</label>
-                                        <input type="date" class="form-control" id="orderDate" required>
+                                        <input type="datetime-local" class="form-control" id="orderDate" required>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="supplier" class="form-label">Supplier</label>

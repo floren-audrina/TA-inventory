@@ -86,7 +86,6 @@ async function calculateHPP(variantId, saleQty) {
     };
 }
 
-// Updated processEntry function with always-positive qty
 async function processEntry({
     variantId = null, 
     type = null, 
@@ -100,82 +99,104 @@ async function processEntry({
             throw new Error('Missing required parameters');
         }
 
-        // Update stock in variant table first
-        const newStock = await updateVariantStock(variantId, quantity, type);
-        if (newStock === null) {
-            throw new Error('Failed to update variant stock');
+        // 1. FIRST get current stock (BEFORE any updates)
+        const { data: variant, error: fetchError } = await supabase
+            .from('produk_varian')
+            .select('jumlah_stok')
+            .eq('id', variantId)
+            .single();
+        if (fetchError) throw fetchError;
+        
+        const originalStock = variant.jumlah_stok;
+
+        // 2. Handle incoming stock (purchases/adjustments in)
+        if (type === 'pembelian' || type === 'penyesuaian_masuk') {
+            let newStock = originalStock;
+            if (type === 'penyesuaian_masuk') {
+                newStock = await updateVariantStock(variantId, quantity, type);
+                if (newStock === null) throw new Error('Failed to update variant stock');
+            }
+            
+            // Single record for incoming stock
+            const { data, error } = await supabase.from('riwayat_stok').insert([{
+                id_varian: variantId,
+                tipe_riwayat: type,
+                qty: quantity,
+                stok_sisa: quantity, // Full quantity available
+                saldo: newStock,
+                harga: price,
+                hpp: null,
+                tanggal: date,
+                id_referensi: id,
+            }]).select();
+
+            if (error) throw error;
+            return { success: true, newStock, records: data, isMultiRecord: false };
         }
 
-        // For outgoing transactions, handle potential multiple batches
+        // 3. Handle outgoing stock (sales/adjustments out)
         if (type === 'penjualan' || type === 'penyesuaian_keluar') {
-            const { averageHpp, consumptionRecords, hasPartialConsumption } = await calculateHPP(variantId, quantity);
+            const { averageHpp, consumptionRecords, hasPartialConsumption } = 
+                await calculateHPP(variantId, quantity);
             
             if (hasPartialConsumption) {
-                // Insert multiple records for each batch consumed
-                const recordsToInsert = consumptionRecords.map((record) => ({
-                    id_varian: variantId,
-                    tipe_riwayat: type,
-                    qty: record.usedQty, // Always positive
-                    stok_sisa: null,
-                    saldo: newStock,
-                    harga: price,
-                    hpp: record.purchasePrice,
-                    tanggal: date,
-                    id_referensi: id
-                }));
+                const recordsToInsert = [];
+                let runningStock = originalStock; // Use ORIGINAL stock here
+                
+                // Create records with intermediate balances
+                for (const record of consumptionRecords) {
+                    runningStock -= record.usedQty;
+                    recordsToInsert.push({
+                        id_varian: variantId,
+                        tipe_riwayat: type,
+                        qty: record.usedQty,
+                        stok_sisa: null,
+                        saldo: runningStock,
+                        harga: price,
+                        hpp: record.purchasePrice,
+                        tanggal: date,
+                        id_referensi: id
+                    });
+                }
+
+                // Update physical stock ONLY AFTER creating records
+                const newStock = await updateVariantStock(variantId, quantity, type);
+                if (newStock === null) throw new Error('Failed to update variant stock');
 
                 const { error } = await supabase
                     .from('riwayat_stok')
                     .insert(recordsToInsert);
-
                 if (error) throw error;
 
                 return { 
                     success: true, 
-                    newStock,
+                    newStock, 
                     records: recordsToInsert,
-                    isMultiRecord: true
+                    isMultiRecord: true 
                 };
             }
             
-            // Fall through to single record if only one batch consumed
-        }
+            // Single record case for outgoing stock
+            const newStock = await updateVariantStock(variantId, quantity, type);
+            if (newStock === null) throw new Error('Failed to update variant stock');
 
-        // Default single record insertion
-        let stok_sisa = null;
-        if (type === 'pembelian' || type === 'penyesuaian_masuk') {
-            stok_sisa = quantity;
-        }
-
-        let hpp = null;
-        if (type === 'penjualan' || type === 'penyesuaian_keluar') {
-            const hppResult = await calculateHPP(variantId, quantity);
-            hpp = hppResult.averageHpp;
-        }
-
-        const { data, error } = await supabase
-            .from('riwayat_stok')
-            .insert([{
+            const { data, error } = await supabase.from('riwayat_stok').insert([{
                 id_varian: variantId,
                 tipe_riwayat: type,
-                qty: quantity, // Always positive
-                stok_sisa: stok_sisa,
+                qty: quantity,
+                stok_sisa: null,
                 saldo: newStock,
                 harga: price,
-                hpp: hpp,
+                hpp: averageHpp,
                 tanggal: date,
                 id_referensi: id,
-            }])
-            .select();
+            }]).select();
 
-        if (error) throw error;
+            if (error) throw error;
+            return { success: true, newStock, records: data, isMultiRecord: false };
+        }
 
-        return { 
-            success: true, 
-            newStock,
-            records: data,
-            isMultiRecord: false
-        };
+        throw new Error('Invalid transaction type');
     } catch (error) {
         console.error('Error in processEntry:', error);
         throw error;

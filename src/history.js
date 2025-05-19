@@ -67,23 +67,43 @@ async function fetchVariantDetails(variantId) {
 }
 
 // Function to load enum values for "tipe_riwayat"
+// Function to load enum values for "tipe_riwayat" but only show adjustment types
 async function loadTipeRiwayatEnum() {
-    const { data, error } = await supabase.rpc('get_enum_values', { enum_name: 'tipe_riwayat' });
     const tipeRiwayatSelect = document.getElementById('tipe_riwayat');
 
-    if (error) {
+    // Show loading state
+    tipeRiwayatSelect.innerHTML = '<option value="">Memuat tipe riwayat...</option>';
+
+    try {
+        // Fetch all enum values from the API
+        const { data, error } = await supabase.rpc('get_enum_values', { enum_name: 'tipe_riwayat' });
+
+        if (error) {
+            throw error;
+        }
+
+        // Clear and prepare the dropdown
+        tipeRiwayatSelect.innerHTML = '<option value="" disabled selected>Pilih tipe riwayat</option>';
+
+        // Filter to only include adjustment types
+        const adjustmentTypes = data.filter(item => 
+            item.value === 'penyesuaian_masuk' || 
+            item.value === 'penyesuaian_keluar'
+        );
+
+        // Add the filtered options
+        adjustmentTypes.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.value;
+            option.text = item.value.charAt(0).toUpperCase() + item.value.slice(1).replace('_', ' ');
+            tipeRiwayatSelect.appendChild(option);
+        });
+
+    } catch (error) {
         console.error('Error fetching tipe_riwayat enum:', error);
         tipeRiwayatSelect.innerHTML = '<option value="">Error loading tipe riwayat</option>';
-        return;
+        showToast('Gagal memuat tipe riwayat', 'error');
     }
-
-    tipeRiwayatSelect.innerHTML = '<option value="" disabled selected>Pilih tipe riwayat</option>';
-    data.forEach(item => {
-        const option = document.createElement('option');
-        option.value = item.value;
-        option.text = item.value.charAt(0).toUpperCase() + item.value.slice(1);
-        tipeRiwayatSelect.appendChild(option);
-    });
 }
 
 // // Function to update the stock in the variant table

@@ -424,6 +424,10 @@ async function deleteActiveLog() {
             .eq('status_log', 'draft');
 
         if (error) throw error;
+
+        // Show success message and refresh the state
+        showToast('Log stock opname berhasil dihapus');
+        await checkActiveLog();  // This will update the UI and button state
     } catch (error) {
         console.error('Error deleting stock opname:', error);
         showToast('Gagal menghapus log stock opname: ' + error.message, 'error');
@@ -551,11 +555,10 @@ async function renderActiveLog() {
             stockOpnameModal.show();
         });
 
-        document.getElementById('deleteLogBtn').addEventListener('click', () => {
+        document.getElementById('deleteLogBtn').addEventListener('click', async () => {
             if (confirm('Apakah Anda yakin ingin menghapus log ini?')) {
-                deleteActiveLog();
+                await deleteActiveLog();  // This now properly handles the state update
             }
-            renderEmptyState();
         });
 
         // if (!activeLog || activeLog.length <= 0) {
@@ -1021,15 +1024,14 @@ function showRiwayatDetails(logData) {
                             <strong>Tanggal:</strong> ${new Date(logData.tanggal).toLocaleDateString()}<br>
                             <strong>Status:</strong> <span class="badge bg-success">${logData.status_log}</span><br>
                             <strong>Waktu Dibuat:</strong> ${new Date(logData.waktu_dibuat).toLocaleString()}<br>
-                            <strong>Waktu Selesai:</strong> ${logData.waktu_selesai ? new Date(logData.waktu_selesai).toLocaleString() : '-'}
+                            <strong>Waktu Selesai:</strong> ${new Date(logData.waktu_penyelesaian).toLocaleString()}
                         </div>
                         <table class="table table-bordered table-sm">
                             <thead class="table-light">
                                 <tr>
                                     <th>Produk</th>
                                     <th>Varian</th>
-                                    <th>Stok Sistem</th>
-                                    <th>Stok Fisik</th>
+                                    <th>Stok Akhir</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
@@ -1053,7 +1055,6 @@ function showRiwayatDetails(logData) {
         row.innerHTML = `
             <td>${item.produk_varian.produk.nama}</td>
             <td>${item.produk_varian.varian}</td>
-            <td>${item.produk_varian.jumlah_stok}</td>
             <td>${item.stok}</td>
             <td><span class="badge ${getStatusBadgeClass(item.status_item_log)}">${item.status_item_log}</span></td>
         `;

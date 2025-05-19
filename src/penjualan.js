@@ -9,8 +9,8 @@ function getStatusColor(status) {
     const colorMap = {
         'dipesan': 'secondary',
         'diambil': 'success',
-        'dibayar': 'primary',
-        'selesai': 'success'
+        'dibayar': 'primary'
+        // 'selesai': 'success'
     };
     return colorMap[status] || 'secondary';
 }
@@ -18,7 +18,14 @@ function getStatusColor(status) {
 function formatDate(dateStr) {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('id-ID');
+    // Format as "DD/MM/YYYY HH:mm" for timestamptz
+    return date.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 function formatCurrency(amount) {
@@ -93,24 +100,31 @@ async function openSaleModal(mode = 'add', orderId = null) {
     const statusToggleContainer = document.querySelector('.status-toggle-container');
     const statusBadge = document.getElementById('saleStatusBadge');
     const modalTitle = document.getElementById('saleModalLabel');
+    const addProductBtn = document.getElementById('addProductBtn');
+    const printGroup = document.getElementById('printButtonGroup');
 
     // Set mode and UI state
     const modalElement = document.getElementById('saleModal');
     modalElement.dataset.mode = mode;
+
+    // Always reset these elements first
+    if (addProductBtn) addProductBtn.style.display = 'block'; // Default to visible
+    if (printGroup) printGroup.style.display = 'none';
 
     if (mode === 'edit' && orderId) {
         // Edit mode - show toggle, hide badge
         if (statusToggleContainer) statusToggleContainer.style.display = 'block';
         if (statusBadge) statusBadge.style.display = 'none';
         modalTitle.textContent = 'Edit Pesanan Penjualan';
+        document.getElementById('saveSaleBtn').textContent = 'Update';
 
         await populateSaleForm(orderId);
         
-        // Initialize the status toggle with the loaded status
-        // const currentStatus = document.getElementById('saleStatusBadge').textContent;
-        // setupStatusToggle(currentStatus);
-
-        document.getElementById('saveSaleBtn').textContent = 'Update';
+        // After populating, adjust button visibility based on status
+        const currentStatus = modalElement.dataset.currentStatus;
+        if (addProductBtn) {
+            addProductBtn.style.display = currentStatus === 'dipesan' ? 'block' : 'none';
+        }
     } else {
         // Add mode - hide toggle, show badge
         if (statusToggleContainer) statusToggleContainer.style.display = 'none';
@@ -131,134 +145,18 @@ async function openSaleModal(mode = 'add', orderId = null) {
             <th>Subtotal</th>
             <th></th>
         `;
+
+        // Reset total
+        document.getElementById('totalAmount').textContent = formatCurrency(0);
+
+        // Clear dataset values
+        modalElement.removeAttribute('data-sale-id');
+        modalElement.removeAttribute('data-current-status');
         
         document.getElementById('saveSaleBtn').textContent = 'Simpan';
     }
 
     saleModal.show();
-}
-
-function setupModalEvents() {
-    document.getElementById('addProductBtn').addEventListener('click', addItemRow);
-    document.getElementById('saveSaleBtn').addEventListener('click', async (e) => {
-        e.preventDefault(); // Prevent form submission if needed
-        try {
-            await saveSale(); // Now errors will be catchable
-        } catch (err) {
-            console.error("Save failed:", err);
-            showToast("Gagal menyimpan: " + err.message, "error");
-        }
-    });
-
-    // Add supplier change listener
-    document.getElementById('customer').addEventListener('change', async function() {
-        // Clear existing product rows
-        // document.querySelector('#productsTable tbody').innerHTML = '';
-        
-        // If we're in edit mode, don't auto-add products
-        const mode = document.getElementById('saleModal').dataset.mode;
-        if (mode === 'edit') return;
-        
-        // Add a new empty product row for the new supplier
-        // await addProductRow();
-    });
-
-    // Add event delegation for remove buttons
-    document.querySelector('#productsTable tbody').addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove-item') || e.target.classList.contains('remove-product')) {
-            e.target.closest('tr').remove();
-        }
-    });
-    
-    document.getElementById('saleModal').addEventListener('hidden.bs.modal', () => {
-        document.getElementById('saleForm').reset();
-        document.querySelector('#productsTable tbody').innerHTML = '';
-        document.getElementById('statusFieldsContainer').innerHTML = '';
-        
-        // Reset table header structure
-        const tableHeader = document.querySelector('#productsTable thead tr');
-        tableHeader.innerHTML = `
-            <th>Produk</th>
-            <th>Varian</th>
-            <th>Qty. Dipesan</th>
-            <th>Harga</th>
-            <th>Subtotal</th>
-            <th></th>
-        `;
-    });
-}
-
-function setupStatusToggle(currentStatus, saleData) {
-    const statusBadge = document.getElementById('saleStatusBadge');
-    const toggleButtons = document.querySelectorAll('#saleStatusToggle .btn-status');
-    
-    // Store current field values before any updates
-    const currentFieldValues = {};
-    if (currentStatus === 'diambil') {
-        currentFieldValues.tanggalAmbil = document.getElementById('tanggalAmbil')?.value || '';
-        currentFieldValues.pihakPengambil = document.getElementById('pihakPengambil')?.value || '';
-    } else if (currentStatus === 'dibayar') {
-        currentFieldValues.tanggalPembayaran = document.getElementById('tanggalPembayaran')?.value || '';
-        currentFieldValues.totalDibayarkan = document.getElementById('totalDibayarkan')?.value || '';
-        currentFieldValues.alatPembayaran = document.getElementById('alatPembayaran')?.value || '';
-    }
-
-    // Set the correct toggle button as active
-    toggleButtons.forEach(btn => {
-        btn.classList.remove('active');
-        btn.disabled = false;
-        
-        if (btn.dataset.status === currentStatus) {
-            btn.classList.add('active');
-        }
-    });
-    
-    // Disable previous status buttons
-    const statusOrder = ['dipesan', 'diambil', 'dibayar', 'selesai'];
-    const currentIndex = statusOrder.indexOf(currentStatus);
-    
-    for (let i = 0; i < currentIndex; i++) {
-        const prevStatus = statusOrder[i];
-        document.querySelector(`#saleStatusToggle .btn-status[data-status="${prevStatus}"]`)
-            .disabled = true;
-    }
-    
-    // Immediately update form fields for the current status
-    updateFormForStatus(currentStatus, currentFieldValues);
-    
-    // Set up click handlers
-    toggleButtons.forEach(btn => {
-        btn.addEventListener('click', function() {
-            if (this.disabled) return;
-            
-            const newStatus = this.dataset.status;
-            // Update UI
-            statusBadge.textContent = newStatus;
-            statusBadge.className = `badge bg-${getStatusColor(newStatus)}`;
-            
-            // Preserve existing field values
-            const fieldValues = {};
-            if (newStatus === 'diambil') {
-                fieldValues.tanggalAmbil = document.getElementById('tanggalAmbil')?.value || 
-                    (saleData?.tanggal_diambil || '');
-                fieldValues.pihakPengambil = document.getElementById('pihakPengambil')?.value || 
-                    (saleData?.pihak_pengambil || '');
-            } else if (newStatus === 'dibayar') {
-                fieldValues.tanggalPembayaran = document.getElementById('tanggalPembayaran')?.value || 
-                    (saleData?.tanggal_dibayar || '');
-                fieldValues.totalDibayarkan = document.getElementById('totalDibayarkan')?.value || 
-                    (saleData?.total_dibayarkan || '');
-                fieldValues.alatPembayaran = document.getElementById('alatPembayaran')?.value || 
-                    (saleData?.alat_pembayaran || '');
-            }
-            
-            // Update form with preserved values
-            updateFormForStatus(newStatus, fieldValues);
-
-            toggleButtons.forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-        });
-    });
 }
 
 async function populateSaleForm(saleId) {
@@ -298,8 +196,10 @@ async function populateSaleForm(saleId) {
         modal.dataset.currentStatus = sale.status_pesanan;
 
         // Populate basic fields
-        document.getElementById('saleDate').value = sale.tanggal_pesan;
-        document.getElementById('needDate').value = sale.tanggal_dibutuhkan;
+        document.getElementById('saleDate').value = sale.tanggal_pesan ? 
+            new Date(sale.tanggal_pesan).toISOString().slice(0, 16) : '';
+        document.getElementById('needDate').value = sale.tanggal_dibutuhkan ? 
+            new Date(sale.tanggal_dibutuhkan).toISOString().slice(0, 16) : '';
         document.getElementById('customer').value = sale.id_bakul;
         
         // Clear and prepare form
@@ -321,21 +221,156 @@ async function populateSaleForm(saleId) {
         // THEN setup the status toggle which will update form fields
         setupStatusToggle(sale.status_pesanan, sale);
 
-        // Control UI elements based on status
-        document.getElementById('addProductBtn').style.display = 
-            sale.status_pesanan === 'dipesan' ? 'block' : 'none';
-
-        const printGroup = document.getElementById('printButtonGroup');
-        printGroup.style.display = sale.status_pesanan === 'dibayar' ? 'flex' : 'none';
-
-        // Show the modal
-        saleModal.show();
-
     } catch (error) {
         console.error('Failed to load order:', error);
         showToast('Gagal memuat data pesanan', 'error');
         throw error;
     }
+}
+
+function setupModalEvents() {
+    const addProductBtn = document.getElementById('addProductBtn');
+    const saveSaleBtn = document.getElementById('saveSaleBtn');
+    const customerSelect = document.getElementById('customer');
+    
+    addProductBtn.replaceWith(addProductBtn.cloneNode(true));
+    saveSaleBtn.replaceWith(saveSaleBtn.cloneNode(true));
+    customerSelect.replaceWith(customerSelect.cloneNode(true));
+
+    document.getElementById('addProductBtn').addEventListener('click', addItemRow);
+    document.getElementById('saveSaleBtn').addEventListener('click', async (e) => {
+        e.preventDefault(); // Prevent form submission if needed
+        try {
+            await saveSale(); // Now errors will be catchable
+        } catch (err) {
+            console.error("Save failed:", err);
+            showToast("Gagal menyimpan: " + err.message, "error");
+        }
+    });
+
+    // Add supplier change listener
+    document.getElementById('customer').addEventListener('change', async function() {
+        // Clear existing product rows
+        // document.querySelector('#productsTable tbody').innerHTML = '';
+        
+        // If we're in edit mode, don't auto-add products
+        const mode = document.getElementById('saleModal').dataset.mode;
+        if (mode === 'edit') return;
+        
+        // Add a new empty product row for the new supplier
+        // await addProductRow();
+    });
+
+    // remove item order
+    document.querySelector('#productsTable tbody').addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-item') || e.target.classList.contains('remove-product')) {
+            const row = e.target.closest('tr');
+            row.remove();
+        }
+    });
+    
+    document.getElementById('saleModal').addEventListener('hidden.bs.modal', () => {
+        document.getElementById('saleForm').reset();
+        document.querySelector('#productsTable tbody').innerHTML = '';
+        document.getElementById('statusFieldsContainer').innerHTML = '';
+        
+        // Reset table header structure
+        const tableHeader = document.querySelector('#productsTable thead tr');
+        tableHeader.innerHTML = `
+            <th>Produk</th>
+            <th>Varian</th>
+            <th>Qty. Dipesan</th>
+            <th>Harga</th>
+            <th>Subtotal</th>
+            <th></th>
+        `;
+    });
+}
+
+function setupStatusToggle(currentStatus, saleData) {
+    const statusBadge = document.getElementById('saleStatusBadge');
+    const toggleButtons = document.querySelectorAll('#saleStatusToggle .btn-status');
+    
+    // Store current field values before any updates
+    const currentFieldValues = {};
+    if (currentStatus === 'diambil') {
+        currentFieldValues.tanggalAmbil = document.getElementById('tanggalAmbil')?.value || '';
+        currentFieldValues.pihakPengambil = document.getElementById('pihakPengambil')?.value || '';
+    } else if (currentStatus === 'dibayar') {
+        currentFieldValues.tanggalPembayaran = document.getElementById('tanggalPembayaran')?.value || '';
+        currentFieldValues.totalDibayarkan = document.getElementById('totalDibayarkan')?.value || '';
+        currentFieldValues.alatPembayaran = document.getElementById('alatPembayaran')?.value || '';
+    }
+
+    // Define the strict status sequence
+    const statusSequence = ['dipesan', 'diambil', 'dibayar', 'selesai'];
+    const currentIndex = statusSequence.indexOf(currentStatus);
+
+    // Set the correct toggle button as active and configure button states
+    toggleButtons.forEach(btn => {
+        btn.classList.remove('active');
+        const btnStatus = btn.dataset.status;
+        const btnIndex = statusSequence.indexOf(btnStatus);
+
+        // Disable all buttons except the current status and the next one in sequence
+        if (btnStatus === currentStatus) {
+            btn.classList.add('active');
+            btn.disabled = false;
+        } else {
+            // Only enable the immediate next status in sequence
+            btn.disabled = (btnIndex !== currentIndex + 1);
+        }
+    });
+    
+    // Immediately update form fields for the current status
+    updateFormForStatus(currentStatus, currentFieldValues);
+    
+    // Set up click handlers
+    toggleButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (this.disabled) return;
+            
+            const newStatus = this.dataset.status;
+            // Update UI
+            statusBadge.textContent = newStatus;
+            statusBadge.className = `badge bg-${getStatusColor(newStatus)}`;
+            
+            // Preserve existing field values
+            const fieldValues = {};
+            if (newStatus === 'diambil') {
+                fieldValues.tanggalAmbil = document.getElementById('tanggalAmbil')?.value || 
+                    (saleData?.tanggal_diambil || '');
+                fieldValues.pihakPengambil = document.getElementById('pihakPengambil')?.value || 
+                    (saleData?.pihak_pengambil || '');
+            } else if (newStatus === 'dibayar') {
+                fieldValues.tanggalPembayaran = document.getElementById('tanggalPembayaran')?.value || 
+                    (saleData?.tanggal_dibayar || '');
+                fieldValues.totalDibayarkan = document.getElementById('totalDibayarkan')?.value || 
+                    (saleData?.total_dibayarkan || '');
+                fieldValues.alatPembayaran = document.getElementById('alatPembayaran')?.value || 
+                    (saleData?.alat_pembayaran || '');
+            }
+            
+            // Update form with preserved values
+            updateFormForStatus(newStatus, fieldValues);
+
+            // Update button states
+            const newIndex = statusSequence.indexOf(newStatus);
+            toggleButtons.forEach(b => {
+                const bStatus = b.dataset.status;
+                const bIndex = statusSequence.indexOf(bStatus);
+                
+                b.classList.remove('active');
+                if (bStatus === newStatus) {
+                    b.classList.add('active');
+                    b.disabled = false;
+                } else {
+                    // Only enable the immediate next status in sequence
+                    b.disabled = (bIndex !== newIndex + 1);
+                }
+            });
+        });
+    });
 }
 
 async function updateFormForStatus(newStatus, fieldValues = {}) {
@@ -358,13 +393,19 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
 
     // 3. Update status-specific fields
     const container = document.getElementById('statusFieldsContainer');
+    container.innerHTML = '';
+
+    // 4. Show print options if status is 'dibayar'
+    const printGroup = document.getElementById('printButtonGroup');
+    printGroup.style.display = newStatus === 'dibayar' ? 'flex' : 'none';
     
     if (newStatus === 'diambil') {
         const takers = await getTakerList();
 
         let options = '<option value="" disabled selected>Pilih pihak pengambil</option>';
         takers.forEach(taker => {
-            const selected = fieldValues.pihakPengambil === taker.value ? 'selected' : '';
+            // Only add selected attribute if fieldValues.pihakPengambil exists AND matches
+            const selected = (fieldValues.pihakPengambil && fieldValues.pihakPengambil === taker.value) ? 'selected' : '';
             const displayText = taker.value.charAt(0).toUpperCase() + taker.value.slice(1);
             options += `<option value="${taker.value}" ${selected}>${displayText}</option>`;
         });
@@ -373,8 +414,8 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
             <div class="row mt-3">
                 <div class="col-md-6">
                     <label class="form-label">Tanggal Diambil</label>
-                    <input type="date" class="form-control" id="tanggalAmbil" 
-                           value="${fieldValues.tanggalAmbil || ''}">
+                    <input type="datetime-local" class="form-control" id="tanggalAmbil" 
+                        value="${fieldValues.tanggalAmbil || ''}">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Pihak Pengambil</label>
@@ -383,7 +424,7 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
                     </select>
                 </div>
             </div>
-        `;
+        `;                                  
     } else if (newStatus === 'dibayar') {
         const paymentMethods = await getPaymentMethodsEnum();
         
@@ -398,13 +439,98 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
             <div class="row mt-3">
                 <div class="col-md-4">
                     <label class="form-label">Tanggal Pembayaran</label>
-                    <input type="date" class="form-control" id="tanggalPembayaran" 
-                           value="${fieldValues.tanggalPembayaran || ''}">
+                    <input type="datetime-local" class="form-control" id="tanggalPembayaran" 
+                        value="${fieldValues.tanggalPembayaran || ''}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Total Dibayarkan</label>
                     <input type="number" class="form-control" id="totalDibayarkan" 
-                           value="${fieldValues.totalDibayarkan || ''}">
+                        value="${fieldValues.totalDibayarkan || ''}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Alat Pembayaran</label>
+                    <select class="form-select" id="alatPembayaran">
+                        ${paymentOptions}
+                    </select>
+                </div>
+            </div>
+        `;
+
+        // Check if payment data is complete
+        const isPaymentComplete = fieldValues.tanggalPembayaran && 
+            fieldValues.totalDibayarkan && 
+            fieldValues.alatPembayaran;
+        
+        // Disable print buttons if payment data is incomplete
+        document.getElementById('printReceiptBtn').disabled = !isPaymentComplete;
+        document.getElementById('exportPdfBtn').disabled = !isPaymentComplete;
+        
+        // Add event listeners to payment fields to enable buttons when all fields are filled
+        const paymentFields = ['tanggalPembayaran', 'totalDibayarkan', 'alatPembayaran'];
+        paymentFields.forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                field.addEventListener('input', checkPaymentData);
+            }
+        });
+    }
+}
+
+async function addStatusSpecificFields(sale) {
+    const container = document.getElementById('statusFieldsContainer');
+    container.innerHTML = '';
+    calculateTotal();
+    
+    if (sale.status_pesanan === 'diambil') {
+        const takers = await getTakerList();
+        
+        let takerOpts = '<option value="" disabled selected>Pilih pihak pengambil</option>';
+        takers.forEach(taker => {
+            // Only select if sale.pihak_pengambil exists and matches
+            const isSelected = (sale.pihak_pengambil && sale.pihak_pengambil === taker.value) ? 'selected' : '';
+            const displayText = taker.value.charAt(0).toUpperCase() + taker.value.slice(1);
+            takerOpts += `<option value="${taker.value}" ${isSelected}>${displayText}</option>`;
+        });
+
+        container.innerHTML = `
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <label class="form-label">Tanggal Diambil</label>
+                    <input type="datetime-local" class="form-control" id="tanggalAmbil" 
+                        value="${sale.tanggal_diambil ? 
+                            new Date(sale.tanggal_diambil).toISOString().slice(0, 16) : ''}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Pihak Pengambil</label>
+                    <select class="form-select" id="pihakPengambil">
+                        ${takerOpts}
+                    </select>
+                </div>
+            </div>
+        `;
+    }
+    else if (sale.status_pesanan === 'dibayar') {
+        const paymentMethods = await getPaymentMethodsEnum();
+        
+        let paymentOptions = '<option value="" disabled selected>Pilih metode pembayaran</option>';
+        paymentMethods.forEach(method => {
+            const isSelected = sale.alat_pembayaran === method.value ? 'selected' : '';
+            const displayText = method.value.charAt(0).toUpperCase() + method.value.slice(1);
+            paymentOptions += `<option value="${method.value}" ${isSelected}>${displayText}</option>`;
+        });
+
+        container.innerHTML = `
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <label class="form-label">Tanggal Pembayaran</label>
+                    <input type="datetime-local" class="form-control" id="tanggalPembayaran" 
+                        value="${sale.tanggal_dibayar ? 
+                            new Date(sale.tanggal_dibayar).toISOString().slice(0, 16) : ''}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Total Dibayarkan</label>
+                    <input type="number" class="form-control" id="totalDibayarkan" 
+                        value="${sale.total_dibayarkan || ''}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Alat Pembayaran</label>
@@ -415,10 +541,18 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
             </div>
         `;
     }
+}
 
-    // 4. Show print options if status is 'dibayar'
-    const printGroup = document.getElementById('printButtonGroup');
-    printGroup.style.display = newStatus === 'dibayar' ? 'flex' : 'none';
+function checkPaymentData() {
+    const printReceiptBtn = document.getElementById('printReceiptBtn');
+    const exportPdfBtn = document.getElementById('exportPdfBtn');
+    
+    const isComplete = document.getElementById('tanggalPembayaran').value &&
+        document.getElementById('totalDibayarkan').value &&
+        document.getElementById('alatPembayaran').value;
+    
+    printReceiptBtn.disabled = !isComplete;
+    exportPdfBtn.disabled = !isComplete;
 }
 
 async function getPaymentMethodsEnum() {
@@ -653,7 +787,8 @@ function setupRowCalculations(row) {
     const calculateSubtotal = () => {
         const price = parseFloat(row.querySelector('.price').value) || 0;
         const quantity = parseInt(row.querySelector('.quantity').value) || 0;
-        const subtotal = price * quantity;
+        const subtotal = Math.round(price * quantity); // → 38000
+        console.log(subtotal);
         
         // Update the subtotal display (either textContent or value depending on your row type)
         const subtotalElement = row.querySelector('.subtotal');
@@ -693,95 +828,48 @@ function calculateTotal() {
     document.getElementById('totalAmount').textContent = formatCurrency(total);
 }
 
-async function addStatusSpecificFields(sale) {
-    const container = document.getElementById('statusFieldsContainer');
-    container.innerHTML = '';
-    calculateTotal();
-    
-    if (sale.status_pesanan === 'diambil') {
-        const takers = await getTakerList();
-        
-        let takerOpts = '<option value="" disabled selected>Pilih pengambil</option>';
-        takers.forEach(taker => {
-            const isSelected = sale.pihak_pengambil === taker.value ? 'selected' : '';
-            const displayText = taker.value.charAt(0).toUpperCase() + taker.value.slice(1);
-            takerOpts += `<option value="${taker.value}" ${isSelected}>${displayText}</option>`;
-        });
-
-        container.innerHTML = `
-            <div class="row mt-3">
-                <div class="col-md-6">
-                    <label class="form-label">Tanggal Diambil</label>
-                    <input type="date" class="form-control" id="tanggalAmbil" 
-                           value="${sale.tanggal_diambil || ''}">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Pihak Pengambil</label>
-                    <select class="form-select" id="pihakPengambil">
-                        ${takerOpts}
-                    </select>
-                </div>
-            </div>
-        `;
-    }
-    else if (sale.status_pesanan === 'dibayar') {
-        const paymentMethods = await getPaymentMethodsEnum();
-        
-        let paymentOptions = '<option value="" disabled selected>Pilih metode pembayaran</option>';
-        paymentMethods.forEach(method => {
-            const isSelected = sale.alat_pembayaran === method.value ? 'selected' : '';
-            const displayText = method.value.charAt(0).toUpperCase() + method.value.slice(1);
-            paymentOptions += `<option value="${method.value}" ${isSelected}>${displayText}</option>`;
-        });
-
-        container.innerHTML = `
-            <div class="row mt-3">
-                <div class="col-md-4">
-                    <label class="form-label">Tanggal Pembayaran</label>
-                    <input type="date" class="form-control" id="tanggalPembayaran" 
-                           value="${sale.tanggal_pembayaran || ''}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Total Dibayarkan</label>
-                    <input type="number" class="form-control" id="totalDibayarkan" 
-                           value="${sale.total_dibayarkan || ''}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Alat Pembayaran</label>
-                    <select class="form-select" id="alatPembayaran">
-                        ${paymentOptions}
-                    </select>
-                </div>
-            </div>
-        `;
-    }
-}
-
 function collectFormData() {
     const mode = document.getElementById('saleModal').dataset.mode;
-    const currentStatus = document.getElementById('saleStatusBadge')?.textContent || 'dipesan';
+    const isNewOrder = mode === 'add';
+    
+    // 1. Get status - different logic for new vs existing orders
+    let currentStatus;
+    if (isNewOrder) {
+        currentStatus = 'draft';
+    } else {
+        const activeToggle = document.querySelector('#saleStatusToggle .btn-status.active');
+        currentStatus = activeToggle?.dataset.status || 'dipesan';
+    }
+
+    // Helper function to format datetime
+    const formatDateTime = (datetimeStr) => {
+        if (!datetimeStr) return null;
+        // Convert "YYYY-MM-DDTHH:MM" to ISO string with seconds
+        return new Date(datetimeStr).toISOString();
+    };
+
+    // 2. Prepare the data
     const data = {
-        orderDate: document.getElementById('saleDate').value,
-        needDate: document.getElementById('needDate').value,
+        orderDate: formatDateTime(document.getElementById('saleDate').value),
+        needDate: formatDateTime(document.getElementById('needDate').value),
         bakulID: document.getElementById('customer').value,
-        status: currentStatus,
+        status: isNewOrder ? 'dipesan' : currentStatus,
         items: Array.from(document.querySelectorAll('#productsTable tbody tr')).map(row => ({
-            variantId: row.querySelector('.variant-select').value, // Changed from productId
-            quantity: parseInt(row.querySelector('.quantity').value),
+            variantId: row.querySelector('.variant-select').value,
+            quantity: parseInt(row.querySelector('.quantity').value) || 0,
             rowId: row.dataset.itemId || null,
-            price: row.querySelector('.price').value
+            price: parseFloat(row.querySelector('.price').value) || 0
         }))
     };
 
-    if (mode === 'edit') {
-        // Add data if in diambil status
+    // 3. Add conditional fields
+    if (!isNewOrder) {
         if (currentStatus === 'diambil') {
-            data.tanggalAmbil = document.getElementById('tanggalAmbil').value;
+            data.tanggalAmbil = formatDateTime(document.getElementById('tanggalAmbil').value);
             data.pihakPengambil = document.getElementById('pihakPengambil').value;
         }
-        // Add payment data if in dibayar status
         if (currentStatus === 'dibayar') {
-            data.tanggalPembayaran = document.getElementById('tanggalPembayaran').value;
+            data.tanggalPembayaran = formatDateTime(document.getElementById('tanggalPembayaran').value);
             data.totalDibayarkan = document.getElementById('totalDibayarkan').value;
             data.alatPembayaran = document.getElementById('alatPembayaran').value;
         }
@@ -811,8 +899,18 @@ async function saveSale() {
 
 async function createSale() {
     const formData = collectFormData();
+    console.log(formData);
     
     try {
+        // reserve stock
+        for (const item of formData.items) {
+            const { error } = await supabase.rpc('adjust_reserved_stock', {
+                p_variant_id: item.variantId,
+                p_adjustment: item.quantity
+            });
+            if (error) throw error;
+        }
+        
         // 1. Create order header
         const { data: newOrder, error } = await supabase
             .from('pesanan_penjualan')
@@ -838,24 +936,6 @@ async function createSale() {
             })));
 
         if (itemsError) throw itemsError;
-
-        for (const item of formData.items) {
-            if (item.quantity === undefined) {
-                throw new Error('All items must have quantity when making an order');
-            }
-
-            const qty = Number(item.quantity) || 0;
-
-            if (isNaN(qty)) {
-                throw new Error('Quantity must be a valid number');
-            }
-
-            // Update variant stock directly
-            const newStock = await updateVariantStock(item.variantId, qty, 'penjualan');
-            if (newStock === null) {
-                throw new Error(`Failed to update stock for variant ${item.variantId}`);
-            }
-        }
   
         showToast('Pesanan baru berhasil dibuat', 'success');
         await renderOngoingSales();
@@ -868,37 +948,49 @@ async function createSale() {
 async function updateSale() {
     const saleId = document.getElementById('saleModal').dataset.saleId;
     const formData = collectFormData();
-    console.log(formData.status);
     
     try {
-        // 1. Prepare order update data
+        // 1. Prepare and update order header (same as before)
         const saleUpdateData = {
             tanggal_pesan: formData.orderDate,
             id_bakul: formData.bakulID,
             status_pesanan: formData.status
         };
-        // Add additional fields for 'diambil' status
+
         if (formData.status === 'diambil') {
             saleUpdateData.tanggal_diambil = formData.tanggalAmbil;
             saleUpdateData.pihak_pengambil = formData.pihakPengambil;
-        }
-        // Add payment details for 'dibayar' status
-        else if (formData.status === 'dibayar') {
+        } else if (formData.status === 'dibayar') {
             saleUpdateData.tanggal_dibayar = formData.tanggalPembayaran;
             saleUpdateData.total_dibayarkan = formData.totalDibayarkan;
             saleUpdateData.alat_pembayaran = formData.alatPembayaran;
         }
-        // Update order header
+
         const { error: headerError } = await supabase
             .from('pesanan_penjualan')
             .update(saleUpdateData)
             .eq('id', saleId);
-
         if (headerError) throw headerError;
 
-        // 3. Process item updates
+        // 2. Get original quantities
+        const { data: originalItems, error: fetchError } = await supabase
+            .from('item_pesanan_penjualan')
+            .select('id, id_varian, qty_dipesan')
+            .eq('id_jual', saleId);
+        if (fetchError) throw fetchError;
+
+        const originalQuantities = {};
+        originalItems.forEach(item => {
+            originalQuantities[item.id] = {
+                id_varian: item.id_varian,
+                qty_dipesan: item.qty_dipesan
+            };
+        });
+
+        // 3. Process updates and calculate adjustments
         const updates = [];
         const newItems = [];
+        const stockAdjustments = {};
         
         formData.items.forEach(item => {
             const itemData = {
@@ -910,17 +1002,58 @@ async function updateSale() {
 
             if (item.rowId) {
                 updates.push({ ...itemData, id: item.rowId });
+                const originalQty = originalQuantities[item.rowId]?.qty_dipesan || 0;
+                const qtyDifference = item.quantity - originalQty;
+                console.log(qtyDifference);
+                
+                if (qtyDifference !== 0) {
+                    stockAdjustments[item.variantId] = (stockAdjustments[item.variantId] || 0) + qtyDifference;
+                    console.log(stockAdjustments[item.variantId]);
+                }
             } else {
-                newItems.push({ ...itemData, id_jual: saleId });
+                newItems.push(itemData);
+                stockAdjustments[item.variantId] = (stockAdjustments[item.variantId] || 0) + item.quantity;
             }
         });
 
-        // 4. Execute updates
+        // 4. Handle deleted items
+        const currentItemIds = formData.items.map(item => Number(item.rowId)).filter(Boolean);
+        const deletedItems = originalItems.filter(item => !currentItemIds.includes(item.id));
+        console.log(deletedItems);
+        console.log("Original items:", originalItems.map(i => i.id));
+        console.log("Current items:", formData.items.map(i => i.rowId));
+        
+        for (const deletedItem of deletedItems) {
+            stockAdjustments[deletedItem.id_varian] = (stockAdjustments[deletedItem.id_varian] || 0) - deletedItem.qty_dipesan;
+            console.log(stockAdjustments[deletedItem.id_varian]);
+        }
+
+        // 5. Execute stock adjustments
+        for (const [variantId, adjustment] of Object.entries(stockAdjustments)) {
+            if (adjustment !== 0) {
+                console.log('adj: ', adjustment);
+                const { error } = await supabase.rpc('adjust_reserved_stock', {
+                    p_variant_id: variantId,
+                    p_adjustment: adjustment
+                });
+                if (error) throw error;
+            }
+        }
+
+        // 6. Delete removed items
+        if (deletedItems.length > 0) {
+            const { error: deleteError } = await supabase
+                .from('item_pesanan_penjualan')
+                .delete()
+                .in('id', deletedItems.map(item => item.id));
+            if (deleteError) throw deleteError;
+        }
+
+        // 7. Execute item updates
         if (updates.length > 0) {
             const { error: updateError } = await supabase
                 .from('item_pesanan_penjualan')
                 .upsert(updates);
-            
             if (updateError) throw updateError;
         }
         
@@ -928,7 +1061,6 @@ async function updateSale() {
             const { error: insertError } = await supabase
                 .from('item_pesanan_penjualan')
                 .insert(newItems);
-            
             if (insertError) throw insertError;
         }
 
@@ -993,7 +1125,7 @@ async function renderOngoingSales() {
                 )
             `)
             .neq('status_pesanan', 'selesai')
-            .order('tanggal_pesan', { ascending: false });
+            .order('id', { ascending: false });
 
         if (error) throw error;
 
@@ -1093,7 +1225,8 @@ function createSaleCard(sale) {
     
     const totalAmount = document.createElement('p');
     totalAmount.className = 'mb-1';
-    totalAmount.innerHTML = `<strong>Total:</strong> ${formatCurrency(sale.total || 0)}`;
+    const total = Math.round(sale.total);
+    totalAmount.innerHTML = `<strong>Total:</strong> ${formatCurrency(total || 0)}`;
     
     // Items list
     const itemsTitle = document.createElement('p');
@@ -1161,14 +1294,14 @@ function createSaleCard(sale) {
         cancelBtn.className = 'btn btn-sm btn-outline-danger ms-2 cancel-order';
         cancelBtn.innerHTML = '<i class="bi bi-x-circle"></i> Batalkan';
         cancelBtn.dataset.orderId = sale.id;
+        const itemsData = sale.items.map(item => ({
+            variantId: item.produk_varian?.id || '',
+            qty: item.qty_dipesan || 0,
+            price: item.harga_jual || 0
+        }));
+        
+        cancelBtn.dataset.items = JSON.stringify(itemsData);
         footerDiv.appendChild(cancelBtn);
-    } 
-    else if (sale.status_pesanan === 'diambil') {
-        const archiveBtn = document.createElement('button');
-        archiveBtn.className = 'btn btn-sm btn-outline-warning ms-2 archive-order';
-        archiveBtn.innerHTML = '<i class="bi bi-archive"></i> Arsipkan';
-        archiveBtn.dataset.orderId = sale.id;
-        footerDiv.appendChild(archiveBtn);
     } 
     else if (sale.status_pesanan === 'dibayar') {
         const completeBtn = document.createElement('button');
@@ -1185,6 +1318,16 @@ function createSaleCard(sale) {
         
         completeBtn.dataset.items = JSON.stringify(itemsData);
         footerDiv.appendChild(completeBtn);
+
+        const reprintBtn = document.createElement('button');
+        reprintBtn.className = 'btn btn-sm btn-outline-primary ms-2 reprint-order';
+        reprintBtn.innerHTML = '<i class="bi bi-printer"></i> Cetak';
+        reprintBtn.dataset.orderId = sale.id;
+        reprintBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            printReceipt(sale.id);
+        });
+        footerDiv.appendChild(reprintBtn);
     }
     
     btnGroup.appendChild(actionBtn);
@@ -1295,9 +1438,25 @@ async function renderHistoryTable() {
                     <td>${formatCurrency(order.total_dibayarkan)}</td>
                     <td>${formattedPaymentDate}</td>
                     <td>${order.alat_pembayaran || '-'}</td>
-                    <td><button class="btn btn-sm btn-outline-primary detail-btn" data-order-id="${order.id}">Detail</button></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary detail-btn me-1" data-order-id="${order.id}">Detail</button>
+                        <button class="btn btn-sm btn-outline-secondary reprint-btn" data-order-id="${order.id}">Cetak</button>
+                    </td>
                 `;
                 historyTableBody.appendChild(row);
+            });
+
+            // Add event listeners to reprint buttons
+            document.querySelectorAll('.reprint-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const orderId = e.target.dataset.orderId;
+                    try {
+                        await printReceipt(orderId);
+                    } catch (error) {
+                        console.error('Error printing receipt:', error);
+                        showToast('Gagal mencetak struk', 'error');
+                    }
+                });
             });
 
             // Add event listeners to detail buttons
@@ -1434,7 +1593,7 @@ function setupPrintButton() {
     const pdfBtn = document.getElementById('exportPdfBtn');
     const printGroup = document.getElementById('printButtonGroup');
     
-    printBtn?.addEventListener('click', printReceipt);
+    printBtn?.addEventListener('click', () => printReceipt());
     pdfBtn?.addEventListener('click', exportToPdf);
     
     // Observe status changes to show/hide print options
@@ -1447,20 +1606,44 @@ function setupPrintButton() {
 }
 
 // Update the printReceipt function to handle status visibility
-async function printReceipt() {
-    const orderId = document.getElementById('saleModal').dataset.saleId;
+async function printReceipt(id = null) {
+    let orderId;
+    if (!id) {
+        orderId = document.getElementById('saleModal').dataset.saleId;
+    } else {
+        orderId = id;
+    }
+    
     if (!orderId) {
         showToast('Tidak ada pesanan yang dipilih', 'error');
         return;
     }
 
     try {
-        const order = await fetchOrderData(orderId);
+        // First try to get complete order data from database
+        let order = await fetchOrderData(orderId);
+        
+        // If payment date doesn't exist in DB but exists in form, use form data
+        if (!order.tanggal_dibayar || !order.total_dibayarkan || !order.alat_pembayaran) {
+            const paymentData = collectFormData();
+            if (paymentData) {
+                order = {
+                    ...order,
+                    tanggal_dibayar: paymentData.tanggalPembayaran,
+                    // Also get other payment data from form if needed
+                    total_dibayarkan: parseFloat(paymentData.totalDibayarkan),
+                    alat_pembayaran: paymentData.alatPembayaran
+                };
+            } else {
+                throw new Error('Data pembayaran belum lengkap');
+            }
+        }
+
         const receiptHtml = generateReceiptHtml(order);
         printReceiptHtml(receiptHtml);
     } catch (error) {
         console.error('Error printing receipt:', error);
-        showToast('Gagal mencetak struk', 'error');
+        showToast(error.message || 'Gagal mencetak struk', 'error');
     }
 }
 
@@ -1523,7 +1706,15 @@ function printReceiptHtml(htmlContent) {
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     
-    // Write the HTML content to the new window
+    // Calculate approximate height based on content (5mm per line/item)
+    const itemCount = (htmlContent.match(/<tr>/g) || []).length;
+    const baseHeight = 50; // Minimum height for header/footer
+    const itemHeight = itemCount * 3;
+    const totalHeight = Math.max(baseHeight + itemHeight, 150); // At least 150mm
+    
+    // Add padding (5mm top/bottom, 3mm left/right)
+    const padding = '5mm 3mm';
+    
     printWindow.document.open();
     printWindow.document.write(`
         <!DOCTYPE html>
@@ -1539,18 +1730,28 @@ function printReceiptHtml(htmlContent) {
                         font-size: 12px;
                         width: 80mm;
                         margin: 0;
-                        padding: 0;
+                        padding: ${padding};
                     }
                     @page {
-                        size: 80mm 297mm;
+                        size: 80mm ${totalHeight}mm;
                         margin: 0;
+                    }
+                    table {
+                        table-layout: fixed;  // Enforces column widths
+                    }
+                    colgroup col:nth-child(1) { width: 50%; }
+                    colgroup col:nth-child(2) { width: 15%; }
+                    colgroup col:nth-child(3) { width: 35%; }
+                    td, th {
+                        word-wrap: break-word;  // Ensures text wraps
+                        overflow-wrap: break-word;
                     }
                     .no-print { display: none !important; }
                     button { display: none !important; }
                 }
                 .receipt-container {
                     width: 100%;
-                    padding: 10px;
+                    padding: 0;
                     box-sizing: border-box;
                 }
                 .receipt-header, .receipt-footer {
@@ -1560,15 +1761,15 @@ function printReceiptHtml(htmlContent) {
                 .receipt-items {
                     width: 100%;
                     border-collapse: collapse;
-                    margin: 10px 0;
+                    margin: 5px 0;
                 }
                 .receipt-items th {
                     border-bottom: 1px dashed #000;
-                    padding: 5px 0;
+                    padding: 4px 0;
                     text-align: left;
                 }
                 .receipt-items td {
-                    padding: 3px 0;
+                    padding: 2px 0;
                 }
                 .text-right {
                     text-align: right;
@@ -1578,7 +1779,7 @@ function printReceiptHtml(htmlContent) {
                 }
                 .divider {
                     border-top: 1px dashed #000;
-                    margin: 5px 0;
+                    margin: 4px 0;
                 }
             </style>
         </head>
@@ -1632,16 +1833,21 @@ function generateReceiptHtml(order) {
         
         <!-- Order Info -->
         ${generateMetadataRow('No. Pesanan:', order.id)}
-        ${generateMetadataRow('Tanggal:', formatDate(order.tanggal_pesan))}
+        ${generateMetadataRow('Tanggal:', formatDate(order.tanggal_dibayar))}
         ${generateMetadataRow('Pembeli:', order.bakul?.nama || '-')}
         
         <hr style="border-top:1px dashed #000; margin:5px 0;">
         
         <!-- Items Table -->
-        <table style="width:100%; border-collapse:collapse;">
+        <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+            <colgroup>
+                <col style="width:50%">  <!-- Product name column -->
+                <col style="width:15%">  <!-- Qty column -->
+                <col style="width:35%">  <!-- Price column -->
+            </colgroup>
             <thead>
                 <tr>
-                    <th style="text-align:left; padding:2px 0; border-bottom:1px dashed #000;">Item</th>
+                    <th style="text-align:left; padding:2px 0; border-bottom:1px dashed #000; word-wrap:break-word;">Item</th>
                     <th style="text-align:right; padding:2px 0; border-bottom:1px dashed #000;">Qty</th>
                     <th style="text-align:right; padding:2px 0; border-bottom:1px dashed #000;">Harga</th>
                 </tr>
@@ -1649,7 +1855,9 @@ function generateReceiptHtml(order) {
             <tbody>
                 ${order.items.map(item => `
                     <tr>
-                        <td style="padding:2px 0;">${item.produk_varian?.produk?.nama || 'Produk'} ${item.produk_varian?.varian || ''}</td>
+                        <td style="padding:2px 0; word-wrap:break-word; overflow-wrap:break-word;">
+                            ${item.produk_varian?.produk?.nama || 'Produk'} ${item.produk_varian?.varian || ''}
+                        </td>
                         <td style="text-align:right; padding:2px 0;">${item.qty_dipesan}</td>
                         <td style="text-align:right; padding:2px 0;">${formatCurrency(item.harga_jual)}</td>
                     </tr>
@@ -1727,22 +1935,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cancel Order (dipesan)
     document.addEventListener('click', async (e) => {
         if (e.target.closest('.cancel-order')) {
-            const orderId = e.target.closest('.cancel-order').dataset.orderId;
-            if (confirm('Yakin ingin membatalkan pesanan ini?')) {
+            const button = e.target.closest('.cancel-order');
+            const orderId = button.dataset.orderId;
+            const itemsData = JSON.parse(button.dataset.items || '[]');
+            console.log("data: ", itemsData);
+
+            try {
+                if (!confirm('Yakin ingin membatalkan pesanan ini?')) {
+                    return;
+                }
+
+                // release stok_reservasi
+                for (const item of itemsData) {
+                    console.log("item: ",item)
+                    const { error } = await supabase.rpc('adjust_reserved_stock', {
+                        p_variant_id: item.variantId,
+                        p_adjustment: -item.qty // Negative to (-)
+                    });
+
+                    if (error) {
+                        throw error;
+                    } else {
+                        console.log('stok_reservasi updated');
+                    }
+                }
+
+                // delete the order
                 const { error } = await supabase
                     .from('pesanan_penjualan')
                     .delete()
                     .eq('id', orderId);
                 
-                if (!error) {
-                    showToast('Pesanan dibatalkan', 'success');
-                    renderOngoingSales();
-                }
+                if (error) throw error;
+
+                showToast('Pesanan dibatalkan', 'success');
+                renderOngoingSales();
+            }
+            catch (error) {
+                console.error('Order processing failed:', error);
+                showToast('Gagal membatalkan pesanan: ' + error.message, 'error');
             }
         }
     });
 
-    // Complete Order (dibayar)
+    // complete order
     document.addEventListener('click', async (e) => {
         if (e.target.closest('.complete-order')) {
             const button = e.target.closest('.complete-order');
@@ -1750,21 +1986,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             const itemsData = JSON.parse(button.dataset.items || '[]');
             
             try {
-                console.log("Items data before processing:", itemsData);
-                // Process received items
+                // Process each item to reduce reserved stock
                 for (const item of itemsData) {
+                    // Pass positive quantity to reduce reservation
+                    const { error } = await supabase.rpc('adjust_reserved_stock', {
+                        p_variant_id: item.variantId,
+                        p_adjustment: -item.qty 
+                    });
+
+                    if (error) throw error;
+
                     await processEntry({
                         variantId: item.variantId,
                         type: 'penjualan',
                         id: orderId,
-                        quantity: item.quantity,
+                        quantity: item.qty,
                         price: item.price
                     });
                 }
 
-                // Update order status to 'selesai' after processing all items
+                // Update order status
                 const { error } = await supabase
-                    .from('pesanan_pembelian')
+                    .from('pesanan_penjualan')
                     .update({ status_pesanan: 'selesai' })
                     .eq('id', orderId);
                 
@@ -1775,7 +2018,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
             } catch (error) {
                 console.error('Order processing failed:', error);
-                showToast('Gagal menyelesaikan pesanan', 'error');
+                showToast('Gagal menyelesaikan pesanan: ' + error.message, 'error');
             }
         }
     });

@@ -35,18 +35,11 @@
         .order-status {
             font-weight: bold;
         }
-        /* Status-specific colors */
-        .status-draft { color: #6c757d; }
-        .status-diproses { color: #fd7e14; }
-        .status-dikirim { color: #20c997; }
-        .status-dibayar { color: #0d6efd; }
-        .status-selesai { color: #198754; }
-        
-        /* Rest of your existing styles... */
+
         .table-container {
             margin-top: 20px;
         }
-        /* Status toggle styles */
+
         .status-toggle-container {
             display: flex;
             align-items: center;
@@ -122,7 +115,7 @@
         }
     </style>
 </head>
-<body>
+<body class="p-4 bg-light">
     <div id="navbar"></div>
     <script>
         fetch("navbar.html")
@@ -184,10 +177,10 @@
             </div>
 
             <!-- History Tab (Table) -->
-            <div class="tab-pane fade" id="history" role="tabpanel">
-                <div class="table-responsive mt-3">
-                    <table class="table table-striped">
-                        <thead>
+            <div class="tab-pane fade table-container" id="history" role="tabpanel">
+                <!-- <div class="table-responsive mt-3"> -->
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-light">
                             <tr>
                                 <th>ID</th>
                                 <th>Tgl. Pesan</th>
@@ -205,7 +198,7 @@
                             <!-- History data will be inserted here -->
                         </tbody>
                     </table>
-                </div>
+                <!-- </div> -->
             </div>
         </div>
 
@@ -240,11 +233,11 @@
                             <div class="row mb-3">
                                 <div class="col-md-4">
                                     <label for="saleDate" class="form-label">Tanggal Pesan</label>
-                                    <input type="date" class="form-control" id="saleDate" required>
+                                    <input type="datetime-local" class="form-control" id="saleDate" required>
                                 </div>
                                 <div class="col-md-4">
                                     <label for="needDate" class="form-label">Tanggal Butuh</label>
-                                    <input type="date" class="form-control" id="needDate" required>
+                                    <input type="datetime-local" class="form-control" id="needDate" required>
                                 </div>
                                 <div class="col-md-4">
                                     <label for="customer" class="form-label">Bakul</label>

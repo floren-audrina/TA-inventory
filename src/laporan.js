@@ -4,19 +4,73 @@ const { jsPDF } = window.jspdf;
 document.addEventListener('DOMContentLoaded', () => {
     // DOM elements
     const jenisSelect = document.getElementById('jenis');
-    const periodeSelect = document.getElementById('periode');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
     const generateBtn = document.getElementById('generateBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const reportContent = document.getElementById('report-content');
     const generateText = document.getElementById('generateText');
     const generateSpinner = document.getElementById('generateSpinner');
+    const groupByContainer = document.getElementById('groupByContainer');
+    
+    // Create group by dropdown for Pembelian report
+    const label = document.createElement('label');
+    label.className = 'form-label';
+    label.innerHTML = 'Pengelompokkan';
+    groupByContainer.appendChild(label);
+
+    const groupBySelect = document.createElement('select');
+    groupBySelect.id = 'groupBy';
+    groupBySelect.className = 'form-select';
+    groupBySelect.innerHTML = '';
+    
+    // Hide group by dropdown initially
+    groupByContainer.style.display = 'none';
+
+    // Show/hide group by dropdown based on report type
+    jenisSelect.addEventListener('change', () => {
+        if (jenisSelect.value === 'Pembelian' || jenisSelect.value === 'Penjualan') {
+            groupByContainer.style.display = 'block';
+            // Update the grouping options based on report type
+            updateGroupByOptions(jenisSelect.value);
+            groupByContainer.appendChild(groupBySelect);
+        } else {
+            groupByContainer.style.display = 'none';
+        }
+    });
+
+    // Add this helper function
+    function updateGroupByOptions(reportType) {
+        if (reportType === 'Pembelian') {
+            groupBySelect.innerHTML = `
+                <option value="" disabled selected>Pilih kelompok</option>
+                <option value="order">Pesanan</option>
+                <option value="supplier">Supplier</option>
+                <option value="product">Produk</option>
+            `;
+        } else if (reportType === 'Penjualan') {
+            groupBySelect.innerHTML = `
+                <option value="" disabled selected>Pilih kelompok</option>
+                <option value="order">Pesanan</option>
+                <option value="customer">Bakul</option>
+                <option value="product">Produk</option>
+            `;
+        }
+    }
+
+    // Set default date range (current month)
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    
+    startDateInput.valueAsDate = firstDayOfMonth;
+    endDateInput.valueAsDate = today;
 
     // Report templates with dynamic data fetching
     const reportData = {
     "Laba Rugi": {
-        fetchData: async (year) => {
-            const startDate = `${year}-01-01`;
-            const endDate = `${year}-12-31`;
+        fetchData: async (startDate, endDate) => {
+            // const startDate = `${year}-01-01`;
+            // const endDate = `${year}-12-31`;
             
             // 1. Fetch SALES (Pendapatan) from pesanan_penjualan
             const { data: sales, error: salesError } = await supabase
@@ -41,7 +95,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalRevenue = sales.reduce((sum, item) => sum + (item.total_dibayarkan || 0), 0);
             
             // Calculate TOTAL COGS (HPP * Quantity Sold)
-            const totalCOGS = cogsData.reduce((sum, item) => sum + (item.hpp * item.qty || 0), 0);
+            let totalCOGS;
+            totalCOGS = cogsData.reduce((sum, item) => sum + (item.hpp * item.qty || 0), 0);
+            totalCOGS = Math.round(totalCOGS);
             
             // Calculate Profits
             const grossProfit = totalRevenue - totalCOGS;
@@ -56,201 +112,623 @@ document.addEventListener('DOMContentLoaded', () => {
             netProfit
             };
         },
-        template: (data, year) => `
-            <h4 class="report-header">Laporan Laba Rugi Tahun ${year}</h4>
-            <table class="table table-bordered">
-            <thead class="table-light">
-                <tr>
-                <th>Keterangan</th>
-                <th>Jumlah (Rp)</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                <td>Pendapatan</td>
-                <td class="text-end">${formatCurrency(data.totalRevenue)}</td>
-                </tr>
-                <tr>
-                <td>Harga Pokok Penjualan (HPP)</td>
-                <td class="text-end">${formatCurrency(data.totalCOGS)}</td>
-                </tr>
-                <tr class="table-active">
-                <td><strong>Laba Kotor</strong></td>
-                <td class="text-end"><strong>${formatCurrency(data.grossProfit)}</strong></td>
-                </tr>
-                <tr>
-                <td>Biaya Operasional</td>
-                <td class="text-end">${formatCurrency(data.operatingExpenses)}</td>
-                </tr>
-                <tr class="table-active">
-                <td><strong>Laba Bersih</strong></td>
-                <td class="text-end"><strong>${formatCurrency(data.netProfit)}</strong></td>
-                </tr>
-            </tbody>
-            </table>
-        `
+        template: (data, startDate, endDate) => {
+                // Update the header to show date range
+                const start = new Date(startDate).toLocaleDateString('id-ID');
+                const end = new Date(endDate).toLocaleDateString('id-ID');
+                return `
+                    <h4 class="report-header">Laporan Laba Rugi ${start} - ${end}</h4>
+                    <table class="table table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                        <th>Keterangan</th>
+                        <th>Jumlah (Rp)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                        <td>Pendapatan</td>
+                        <td class="text-end">${formatCurrency(data.totalRevenue)}</td>
+                        </tr>
+                        <tr>
+                        <td>Harga Pokok Penjualan (HPP)</td>
+                        <td class="text-end">${formatCurrency(data.totalCOGS)}</td>
+                        </tr>
+                        <tr class="table-active">
+                        <td><strong>Laba Kotor</strong></td>
+                        <td class="text-end"><strong>${formatCurrency(data.grossProfit)}</strong></td>
+                        </tr>
+                        <tr>
+                        <td>Biaya Operasional</td>
+                        <td class="text-end">${formatCurrency(data.operatingExpenses)}</td>
+                        </tr>
+                        <tr class="table-active">
+                        <td><strong>Laba Bersih</strong></td>
+                        <td class="text-end"><strong>${formatCurrency(data.netProfit)}</strong></td>
+                        </tr>
+                    </tbody>
+                    </table>
+                `;
+            }
         },
     "Pembelian": {
-        fetchData: async (year) => {
-            const startDate = `${year}-01-01`;
-            const endDate = `${year}-12-31`;
+        fetchData: async (startDate, endDate) => {
+            const groupBy = document.getElementById('groupBy').value;
             
-            // First fetch the purchase orders
-            const { data: orders, error: ordersError } = await supabase
-                .from('pesanan_pembelian')
-                .select(`
-                    id,
-                    tanggal_pesan,
-                    total_dibayarkan,
-                    supplier:id_supplier(perusahaan,cp)
-                `)
-                .gte('tanggal_pesan', startDate)
-                .lte('tanggal_pesan', endDate)
-                .order('tanggal_pesan', { ascending: true });
-            
-            if (ordersError) throw ordersError;
-            
-            // Then fetch the items for each order
-            const { data: items, error: itemsError } = await supabase
-                .from('item_pesanan_pembelian')
-                .select('id_beli, qty_dipesan')
-                .in('id_beli', orders.map(order => order.id));
-            
-            if (itemsError) throw itemsError;
-            
-            // Calculate total items per order
-            const itemsPerOrder = items.reduce((acc, item) => {
-                acc[item.id_beli] = (acc[item.id_beli] || 0) + item.qty_dipesan;
-                return acc;
-            }, {});
-            
-            // Combine the data
-            return orders.map(order => ({
-                ...order,
-                total_items: itemsPerOrder[order.id] || 0
-            }));
+            if (groupBy === 'supplier') {
+                // Group by Supplier
+                const { data: orders, error: ordersError } = await supabase
+                    .from('pesanan_pembelian')
+                    .select(`
+                        id,
+                        tanggal_pesan,
+                        total_dibayarkan,
+                        supplier:id_supplier(perusahaan, cp),
+                        item_pesanan_pembelian(id_beli, qty_dipesan)
+                    `)
+                    .eq('status_pesanan', 'selesai')
+                    .gte('tanggal_pesan', startDate)
+                    .lte('tanggal_pesan', endDate);
+                
+                if (ordersError) throw ordersError;
+                
+                // Group by supplier using cp as fallback
+                const supplierMap = new Map();
+                
+                orders.forEach(order => {
+                    // Use cp as supplier identifier if perusahaan is null
+                    const supplierIdentifier = order.supplier?.perusahaan || order.supplier.cp;
+                    
+                    if (!supplierMap.has(supplierIdentifier)) {
+                        supplierMap.set(supplierIdentifier, {
+                            supplier: {
+                                perusahaan: order.supplier?.perusahaan || '(Tanpa Nama Perusahaan)',
+                                cp: order.supplier.cp  // cp is guaranteed
+                            },
+                            totalOrders: 0,
+                            totalItems: 0,
+                            totalPaid: 0
+                        });
+                    }
+                    
+                    const supplierData = supplierMap.get(supplierIdentifier);
+                    supplierData.totalOrders++;
+                    supplierData.totalPaid += order.total_dibayarkan || 0;
+                    
+                    // Calculate total items
+                    const itemsCount = order.item_pesanan_pembelian?.reduce((sum, item) => 
+                        sum + (item.qty_dipesan || 0), 0) || 0;
+                    supplierData.totalItems += itemsCount;
+                });
+                
+                return Array.from(supplierMap.values());
+                
+            } else if (groupBy === 'product') {
+                // Group by Product - improved query with explicit joins
+                const { data: items, error: itemsError } = await supabase
+                    .from('item_pesanan_pembelian')
+                    .select(`
+                        qty_dipesan,
+                        harga_beli,
+                        varian:id_varian(varian, produk:id_produk(nama)),
+                        pesanan_pembelian!inner(
+                            id,
+                            supplier:id_supplier(perusahaan, cp),
+                            status_pesanan
+                        )
+                    `)
+                    .eq('pesanan_pembelian.status_pesanan', 'selesai')
+                    .gte('pesanan_pembelian.tanggal_pesan', startDate)
+                    .lte('pesanan_pembelian.tanggal_pesan', endDate);
+                
+                if (itemsError) throw itemsError;
+                
+                // Debug: Check if any items are missing supplier data
+                const itemsWithMissingSupplier = items.filter(item => 
+                    !item.pesanan_pembelian?.supplier
+                );
+                if (itemsWithMissingSupplier.length > 0) {
+                    console.warn('Items with missing supplier data:', itemsWithMissingSupplier);
+                }
+
+                // Group by product
+                const productMap = new Map();
+                
+                items.forEach(item => {
+                    const productName = item.varian?.produk?.nama 
+                        ? `${item.varian.produk.nama} - ${item.varian.varian || ''}` 
+                        : 'Produk Tidak Dikenal';
+                    
+                    if (!productMap.has(productName)) {
+                        productMap.set(productName, {
+                            product: productName,
+                            totalPurchased: 0,
+                            totalDibayarkan: 0,
+                            totalOrders: 0,
+                            suppliers: new Set(),
+                            orderIds: new Set()
+                        });
+                    }
+                    
+                    const productData = productMap.get(productName);
+                    productData.totalPurchased += item.qty_dipesan || 0;
+                    productData.totalDibayarkan += (item.qty_dipesan || 0) * (item.harga_beli || 0);
+                    
+                    // Track unique orders
+                    if (item.pesanan_pembelian?.id && !productData.orderIds.has(item.pesanan_pembelian.id)) {
+                        productData.orderIds.add(item.pesanan_pembelian.id);
+                        productData.totalOrders++;
+                    }
+                    
+                    // Handle supplier - guaranteed to exist
+                    const supplier = item.pesanan_pembelian.supplier;
+                    const supplierName = supplier.perusahaan || supplier.cp;
+                    productData.suppliers.add(supplierName);
+                });
+                
+                // Convert to array format
+                return Array.from(productMap.values()).map(item => ({
+                    ...item,
+                    suppliers: Array.from(item.suppliers).join(', ')
+                }));
+            } else {
+                // Default: Group by Order
+                const { data: orders, error: ordersError } = await supabase
+                    .from('pesanan_pembelian')
+                    .select(`
+                        id,
+                        tanggal_pesan,
+                        total_dibayarkan,
+                        supplier:id_supplier(perusahaan, cp),
+                        item_pesanan_pembelian(
+                            id_varian,
+                            qty_dipesan,
+                            harga_beli,
+                            varian:id_varian(
+                                varian, 
+                                produk:id_produk(nama)
+                            )
+                        )
+                    `)
+                    .eq('status_pesanan', 'selesai')
+                    .gte('tanggal_pesan', startDate)
+                    .lte('tanggal_pesan', endDate)
+                    .order('tanggal_pesan', { ascending: true });
+                
+                if (ordersError) throw ordersError;
+                
+                return orders.map(order => ({
+                    ...order,
+                    // Handle null perusahaan but guaranteed cp
+                    supplier: {
+                        perusahaan: order.supplier?.perusahaan || '(Tanpa Nama Perusahaan)',
+                        cp: order.supplier.cp
+                    },
+                    // Ensure items array exists
+                    item_pesanan_pembelian: order.item_pesanan_pembelian || []
+                }));
+            }
         },
-        template: (data, year) => {
-            const total = data.reduce((sum, item) => sum + (item.total_dibayarkan || 0), 0);
-            const totalItems = data.reduce((sum, item) => sum + (item.total_items || 0), 0);
+        template: (data, startDate, endDate) => {
+            const groupBy = document.getElementById('groupBy').value;
+            const start = new Date(startDate).toLocaleDateString('id-ID');
+            const end = new Date(endDate).toLocaleDateString('id-ID');
             
-            return `
-                <h4 class="report-header">Laporan Pembelian Tahun ${year}</h4>
-                <table class="table table-bordered">
-                <thead class="table-light">
-                    <tr>
-                    <th>No</th>
-                    <th>Tanggal Pesan</th>
-                    <th>ID Pesanan</th>
-                    <th>Supplier</th>
-                    <th>Total Items</th>
-                    <th>Total Dibayarkan (Rp)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.map((item, index) => `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${formatDate(item.tanggal_pesan)}</td>
-                        <td>PO-${item.id.toString().padStart(4, '0')}</td>
-                        <td>${item.supplier?.perusahaan || '-'} (${item.supplier?.cp || '-'})</td>
-                        <td class="text-end">${item.total_items}</td>
-                        <td class="text-end">${formatCurrency(item.total_dibayarkan)}</td>
-                    </tr>
-                    `).join('')}
-                    <tr class="table-active">
-                    <td colspan="4"><strong>Total</strong></td>
-                    <td class="text-end"><strong>${totalItems}</strong></td>
-                    <td class="text-end"><strong>${formatCurrency(total)}</strong></td>
-                    </tr>
-                </tbody>
-                </table>
-            `;
+            if (groupBy === 'supplier') {
+                // Supplier grouping template
+                const totalPaid = data.reduce((sum, item) => sum + (item.totalPaid || 0), 0);
+                const totalItems = data.reduce((sum, item) => sum + (item.totalItems || 0), 0);
+                
+                return `
+                    <h4 class="report-header">Laporan Pembelian per Supplier ${start} - ${end}</h4>
+                    <table class="table table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                        <th>No</th>
+                        <th>Supplier</th>
+                        <th>Total Pesanan</th>
+                        <th>Total Items</th>
+                        <th>Total Dibayarkan (Rp)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map((item, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.supplier.perusahaan} (${item.supplier.cp})</td>
+                            <td class="text-end">${item.totalOrders}</td>
+                            <td class="text-end">${item.totalItems}</td>
+                            <td class="text-end">${formatCurrency(item.totalPaid)}</td>
+                        </tr>
+                        `).join('')}
+                        <tr class="table-active">
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td class="text-end"><strong>${data.length}</strong></td>
+                        <td class="text-end"><strong>${totalItems}</strong></td>
+                        <td class="text-end"><strong>${formatCurrency(totalPaid)}</strong></td>
+                        </tr>
+                    </tbody>
+                    </table>
+                `;
+            } else if (groupBy === 'product') {
+                // Product grouping template
+                const totalPurchased = data.reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
+                const totalOrders = data.reduce((sum, item) => sum + (item.totalOrders || 0), 0);
+                const totalDibayarkan = data.reduce((sum, item) => sum + (item.totalDibayarkan || 0), 0);
+                
+                return `
+                    <h4 class="report-header">Laporan Pembelian per Produk ${start} - ${end}</h4>
+                    <table class="table table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                        <th>No</th>
+                        <th>Produk</th>
+                        <th>Supplier</th>
+                        <th class="text-end">Total Pesanan</th>
+                        <th class="text-end">Total Qty.</th>
+                        <th class="text-end">Total Dibayarkan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map((item, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.product}</td>
+                            <td>${item.suppliers || '-'}</td>
+                            <td class="text-end">${item.totalOrders}</td>
+                            <td class="text-end">${item.totalPurchased}</td>
+                            <td class="text-end">${formatCurrency(item.totalDibayarkan)}</td>
+                        </tr>
+                        `).join('')}
+                        <tr class="table-active">
+                        <td colspan="3"><strong>Total</strong></td>
+                        <td class="text-end"><strong>${totalOrders}</strong></td>
+                        <td class="text-end"><strong>${totalPurchased}</strong></td>
+                        <td class="text-end"><strong>${formatCurrency(totalDibayarkan)}</strong></td>
+                        </tr>
+                    </tbody>
+                    </table>
+                `;
+            } else {
+                // Order grouping template (default)
+                const total = data.reduce((sum, order) => sum + (order.total_dibayarkan || 0), 0);
+                
+                return `
+                    <h4 class="report-header">Laporan Pembelian per Order ${start} - ${end}</h4>
+                    ${data.map(order => {
+                        const orderTotalItems = order.item_pesanan_pembelian.reduce((sum, item) => sum + item.qty_dipesan, 0);
+                        return `
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <strong>PO-${order.id.toString().padStart(4, '0')}</strong> - 
+                                    ${formatDate(order.tanggal_pesan)} | 
+                                    Supplier: ${order.supplier?.perusahaan || '-'} (${order.supplier?.cp || '-'}) | 
+                                    Total: ${formatCurrency(order.total_dibayarkan)}
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Produk</th>
+                                                <th class="text-end">Qty</th>
+                                                <th class="text-end">Harga Satuan</th>
+                                                <th class="text-end">Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${order.item_pesanan_pembelian.map(item => `
+                                                <tr>
+                                                    <td>${item.varian.produk.nama} - ${item.varian.varian}</td>
+                                                    <td class="text-end">${item.qty_dipesan}</td>
+                                                    <td class="text-end">${formatCurrency(item.harga_beli)}</td>
+                                                    <td class="text-end">${formatCurrency(item.qty_dipesan * item.harga_beli)}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                    <div class="alert alert-primary">
+                        <strong>Total Pembelian: ${formatCurrency(total)}</strong>
+                    </div>
+                `;
+            }
         }
     },
     "Penjualan": {
-        fetchData: async (year) => {
-            const startDate = `${year}-01-01`;
-            const endDate = `${year}-12-31`;
+        fetchData: async (startDate, endDate) => {
+            const groupBy = document.getElementById('groupBy').value;
             
-            // First fetch sales orders
-            const { data: orders, error: ordersError } = await supabase
-                .from('pesanan_penjualan')
-                .select(`
-                    id,
-                    tanggal_pesan,
-                    total_dibayarkan,
-                    bakul:id_bakul(nama)
-                `)
-                .gte('tanggal_pesan', startDate)
-                .lte('tanggal_pesan', endDate)
-                .order('tanggal_pesan', { ascending: true });
-            
-            if (ordersError) throw ordersError;
-            
-            // Then fetch items for each order
-            const { data: items, error: itemsError } = await supabase
-                .from('item_pesanan_penjualan')
-                .select('id_jual, qty_dipesan')
-                .in('id_jual', orders.map(order => order.id));
-            
-            if (itemsError) throw itemsError;
-            
-            // Calculate total items per order
-            const itemsPerOrder = items.reduce((acc, item) => {
-                acc[item.id_jual] = (acc[item.id_jual] || 0) + item.qty_dipesan;
-                return acc;
-            }, {});
-            
-            // Combine the data
-            return orders.map(order => ({
-                ...order,
-                total_items: itemsPerOrder[order.id] || 0
-            }));
+            if (groupBy === 'customer') {
+                // Group by Customer
+                const { data: orders, error: ordersError } = await supabase
+                    .from('pesanan_penjualan')
+                    .select(`
+                        id,
+                        tanggal_pesan,
+                        total_dibayarkan,
+                        bakul:id_bakul(nama),
+                        item_pesanan_penjualan(id_jual, qty_dipesan)
+                    `)
+                    .eq('status_pesanan', 'selesai')
+                    .gte('tanggal_pesan', startDate)
+                    .lte('tanggal_pesan', endDate);
+                
+                if (ordersError) throw ordersError;
+                
+                const customerMap = new Map();
+                
+                orders.forEach(order => {
+                    const customerName = order.bakul?.nama || 'Walk-in';
+                    
+                    if (!customerMap.has(customerName)) {
+                        customerMap.set(customerName, {
+                            customer: customerName,
+                            totalOrders: 0,
+                            totalItems: 0,
+                            totalPaid: 0
+                        });
+                    }
+                    
+                    const customerData = customerMap.get(customerName);
+                    customerData.totalOrders++;
+                    customerData.totalPaid += order.total_dibayarkan || 0;
+                    
+                    // Calculate total items
+                    const itemsCount = order.item_pesanan_penjualan?.reduce((sum, item) => 
+                        sum + (item.qty_dipesan || 0), 0) || 0;
+                    customerData.totalItems += itemsCount;
+                });
+                
+                return Array.from(customerMap.values());
+                
+            } else if (groupBy === 'product') {
+                // Group by Product
+                const { data: items, error: itemsError } = await supabase
+                    .from('item_pesanan_penjualan')
+                    .select(`
+                        qty_dipesan,
+                        harga_jual,
+                        varian:id_varian(varian, produk:id_produk(nama)),
+                        pesanan_penjualan!inner(
+                            id,
+                            tanggal_pesan,
+                            total_dibayarkan,
+                            bakul:id_bakul(nama)
+                        )
+                    `)
+                    .eq('pesanan_penjualan.status_pesanan', 'selesai')
+                    .gte('pesanan_penjualan.tanggal_pesan', startDate)
+                    .lte('pesanan_penjualan.tanggal_pesan', endDate);
+                
+                if (itemsError) throw itemsError;
+                
+                const productMap = new Map();
+                
+                items.forEach(item => {
+                    const productName = item.varian?.produk?.nama 
+                        ? `${item.varian.produk.nama} - ${item.varian.varian || ''}` 
+                        : 'Produk Tidak Dikenal';
+                    
+                    if (!productMap.has(productName)) {
+                        productMap.set(productName, {
+                            product: productName,
+                            totalSold: 0,
+                            totalRevenue: 0,
+                            totalOrders: 0,
+                            customers: new Set(),
+                            orderIds: new Set()
+                        });
+                    }
+                    
+                    const productData = productMap.get(productName);
+                    productData.totalSold += item.qty_dipesan || 0;
+                    productData.totalRevenue += Math.round((item.qty_dipesan || 0) * (item.harga_jual || 0));
+                    
+                    // Track unique orders
+                    if (item.pesanan_penjualan?.id && !productData.orderIds.has(item.pesanan_penjualan.id)) {
+                        productData.orderIds.add(item.pesanan_penjualan.id);
+                        productData.totalOrders++;
+                    }
+                    
+                    // Handle customer
+                    const customerName = item.pesanan_penjualan.bakul?.nama || 'Walk-in';
+                    productData.customers.add(customerName);
+                });
+                
+                // Convert to array format
+                return Array.from(productMap.values()).map(item => ({
+                    ...item,
+                    customers: Array.from(item.customers).join(', ')
+                }));
+                
+            } else {
+                // Default: Group by Order - MODIFIED to include harga_standar
+                const { data: orders, error: ordersError } = await supabase
+                    .from('pesanan_penjualan')
+                    .select(`
+                        id,
+                        tanggal_pesan,
+                        total_dibayarkan,
+                        bakul:id_bakul(nama),
+                        item_pesanan_penjualan(
+                            id_varian,
+                            qty_dipesan,
+                            harga_jual,
+                            varian:id_varian(
+                                varian, 
+                                produk:id_produk(nama),
+                                harga_standar
+                            )
+                        )
+                    `)
+                    .eq('status_pesanan', 'selesai')
+                    .gte('tanggal_pesan', startDate)
+                    .lte('tanggal_pesan', endDate)
+                    .order('tanggal_pesan', { ascending: true });
+                
+                if (ordersError) throw ordersError;
+                
+                return orders.map(order => ({
+                    ...order,
+                    bakul: {
+                        nama: order.bakul?.nama || 'Walk-in'
+                    },
+                    item_pesanan_penjualan: (order.item_pesanan_penjualan || []).map(item => ({
+                        ...item,
+                        // Calculate price difference for each item
+                        priceDifference: item.harga_jual - (item.varian?.harga_standar || 0)
+                    }))
+                }));
+            }
         },
-        template: (data, year) => {
-            const total = data.reduce((sum, item) => sum + (item.total_dibayarkan || 0), 0);
-            const totalItems = data.reduce((sum, item) => sum + (item.total_items || 0), 0);
+        template: (data, startDate, endDate) => {
+            const groupBy = document.getElementById('groupBy').value;
+            const start = new Date(startDate).toLocaleDateString('id-ID');
+            const end = new Date(endDate).toLocaleDateString('id-ID');
             
-            return `
-                <h4 class="report-header">Laporan Penjualan Tahun ${year}</h4>
-                <table class="table table-bordered">
-                <thead class="table-light">
-                    <tr>
-                    <th>No</th>
-                    <th>Tanggal Pesan</th>
-                    <th>ID Pesanan</th>
-                    <th>Pelanggan</th>
-                    <th>Total Items</th>
-                    <th>Total Dibayarkan (Rp)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.map((item, index) => `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${formatDate(item.tanggal_pesan)}</td>
-                        <td>SO-${item.id.toString().padStart(4, '0')}</td>
-                        <td>${item.bakul?.nama || 'Walk-in'}</td>
-                        <td class="text-end">${item.total_items}</td>
-                        <td class="text-end">${formatCurrency(item.total_dibayarkan)}</td>
-                    </tr>
-                    `).join('')}
-                    <tr class="table-active">
-                    <td colspan="4"><strong>Total</strong></td>
-                    <td class="text-end"><strong>${totalItems}</strong></td>
-                    <td class="text-end"><strong>${formatCurrency(total)}</strong></td>
-                    </tr>
-                </tbody>
-                </table>
-            `;
+            if (groupBy === 'customer') {
+                // Customer grouping template
+                const totalPaid = data.reduce((sum, item) => sum + (item.totalPaid || 0), 0);
+                const totalItems = data.reduce((sum, item) => sum + (item.totalItems || 0), 0);
+                
+                return `
+                    <h4 class="report-header">Laporan Penjualan per Bakul ${start} - ${end}</h4>
+                    <table class="table table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                        <th>No</th>
+                        <th>Bakul</th>
+                        <th>Total Pesanan</th>
+                        <th>Total Items</th>
+                        <th>Total Dibayarkan (Rp)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map((item, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.customer}</td>
+                            <td class="text-end">${item.totalOrders}</td>
+                            <td class="text-end">${item.totalItems}</td>
+                            <td class="text-end">${formatCurrency(item.totalPaid)}</td>
+                        </tr>
+                        `).join('')}
+                        <tr class="table-active">
+                        <td colspan="2"><strong>Total</strong></td>
+                        <td class="text-end"><strong>${data.length}</strong></td>
+                        <td class="text-end"><strong>${totalItems}</strong></td>
+                        <td class="text-end"><strong>${formatCurrency(totalPaid)}</strong></td>
+                        </tr>
+                    </tbody>
+                    </table>
+                `;
+            } else if (groupBy === 'product') {
+                // Product grouping template
+                const totalSold = data.reduce((sum, item) => sum + (item.totalSold || 0), 0);
+                const totalRevenue = data.reduce((sum, item) => sum + (item.totalRevenue || 0), 0);
+                const totalOrders = data.reduce((sum, item) => sum + (item.totalOrders || 0), 0);
+                
+                return `
+                    <h4 class="report-header">Laporan Penjualan per Produk ${start} - ${end}</h4>
+                    <table class="table table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                        <th>No</th>
+                        <th>Produk</th>
+                        <th>Bakul</th>
+                        <th class="text-end">Total Pesanan</th>
+                        <th class="text-end">Total Terjual</th>
+                        <th class="text-end">Total Pendapatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map((item, index) => `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.product}</td>
+                            <td>${item.customers || '-'}</td>
+                            <td class="text-end">${item.totalOrders}</td>
+                            <td class="text-end">${item.totalSold}</td>
+                            <td class="text-end">${formatCurrency(item.totalRevenue)}</td>
+                        </tr>
+                        `).join('')}
+                        <tr class="table-active">
+                        <td colspan="3"><strong>Total</strong></td>
+                        <td class="text-end"><strong>${totalOrders}</strong></td>
+                        <td class="text-end"><strong>${totalSold}</strong></td>
+                        <td class="text-end"><strong>${formatCurrency(totalRevenue)}</strong></td>
+                        </tr>
+                    </tbody>
+                    </table>
+                `;
+            } else {
+                // Order grouping template (default) - MODIFIED to show price difference
+                const total = data.reduce((sum, order) => sum + (order.total_dibayarkan || 0), 0);
+                
+                return `
+                    <h4 class="report-header">Laporan Penjualan per Order ${start} - ${end}</h4>
+                    ${data.map(order => {
+                        const orderTotalItems = order.item_pesanan_penjualan.reduce((sum, item) => sum + item.qty_dipesan, 0);
+                        return `
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <strong>SO-${order.id.toString().padStart(4, '0')}</strong> - 
+                                    ${formatDate(order.tanggal_pesan)} | 
+                                    Bakul: ${order.bakul?.nama || 'Walk-in'} | 
+                                    Total: ${formatCurrency(order.total_dibayarkan)}
+                                </div>
+                                <div class="card-body">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Produk</th>
+                                                <th class="text-end">Qty</th>
+                                                <th class="text-end">Harga Satuan</th>
+                                                <th class="text-end">Harga Standar</th>
+                                                <th class="text-end">Diskon/Kenaikan</th>
+                                                <th class="text-end">Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${order.item_pesanan_penjualan.map(item => {
+                                                const standardPrice = item.varian?.harga_standar || 0;
+                                                const difference = item.priceDifference || 0;
+                                                const differenceText = difference === 0 ? 
+                                                    '0' : 
+                                                    (difference > 0 ? `+${formatCurrency(difference)}` : formatCurrency(difference));
+                                                const differenceClass = difference > 0 ? 
+                                                    'text-success' : 
+                                                    difference < 0 ? 'text-danger' : '';
+                                                
+                                                return `
+                                                    <tr>
+                                                        <td>${item.varian.produk.nama} - ${item.varian.varian}</td>
+                                                        <td class="text-end">${item.qty_dipesan}</td>
+                                                        <td class="text-end">${formatCurrency(item.harga_jual)}</td>
+                                                        <td class="text-end">${formatCurrency(standardPrice)}</td>
+                                                        <td class="text-end ${differenceClass}">${differenceText}</td>
+                                                        <td class="text-end">${formatCurrency(item.qty_dipesan * item.harga_jual)}</td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                    <div class="alert alert-primary">
+                        <strong>Total Penjualan: ${formatCurrency(total)}</strong>
+                    </div>
+                `;
+            }
         }
     },
     "Kartu Stok": {
-        fetchData: async (year) => {
-            const startDate = `${year}-01-01`;
-            const endDate = `${year}-12-31`;
-
+        fetchData: async (startDate, endDate) => {
             // 1. Fetch stock history
             const { data, error } = await supabase
                 .from('riwayat_stok')
@@ -361,50 +839,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
         },
-        template: (data, year) => `
-            <h4 class="report-header">Laporan Kartu Stok Tahun ${year}</h4>
-            <table class="table table-bordered">
-                <thead class="table-light">
-                    <tr>
-                        <th rowspan="2">Kode</th>
-                        <th rowspan="2">Nama Barang</th>
-                        <th rowspan="2" class="text-end">Stok Awal</th>
-                        <th colspan="2" class="text-center">Stok Masuk</th>
-                        <th colspan="2" class="text-center">Stok Keluar</th>
-                        <th rowspan="2" class="text-end">Stok Akhir</th>
-                        <th rowspan="2" class="text-end">HPP</th>
-                    </tr>
-                    <tr>
-                        <!-- Subheaders for merged columns -->
-                        <th class="text-end">Pembelian</th>
-                        <th class="text-end">Penyesuaian</th>
-                        <th class="text-end">Penjualan</th>
-                        <th class="text-end">Penyesuaian</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.map(item => `
+        template: (data, startDate, endDate) => {
+             const start = new Date(startDate).toLocaleDateString('id-ID');
+            const end = new Date(endDate).toLocaleDateString('id-ID');
+
+            return `    
+                <h4 class="report-header">Laporan Kartu Stok ${start} - ${end}</h4>
+                <table class="table table-bordered">
+                    <thead class="table-light">
                         <tr>
-                            <td>VAR${item.id.toString().padStart(4, '0')}</td>
-                            <td>${item.name}</td>
-                            <td class="text-end">${item.initialStock}</td>
-                            <td class="text-end">${item.purchases}</td>
-                            <td class="text-end">${item.adjustmentsIn}</td>
-                            <td class="text-end">${item.sales}</td>
-                            <td class="text-end">${item.adjustmentsOut}</td>
-                            <td class="text-end">${item.finalStock}</td>
-                            <td class="text-end">${formatCurrency(item.hpp)}</td>
+                            <th rowspan="2">Kode</th>
+                            <th rowspan="2">Nama Barang</th>
+                            <th rowspan="2" class="text-end">Stok Awal</th>
+                            <th colspan="2" class="text-center">Stok Masuk</th>
+                            <th colspan="2" class="text-center">Stok Keluar</th>
+                            <th rowspan="2" class="text-end">Stok Akhir</th>
+                            <th rowspan="2" class="text-end">HPP</th>
                         </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `
+                        <tr>
+                            <!-- Subheaders for merged columns -->
+                            <th class="text-end">Pembelian</th>
+                            <th class="text-end">Penyesuaian</th>
+                            <th class="text-end">Penjualan</th>
+                            <th class="text-end">Penyesuaian</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map(item => `
+                            <tr>
+                                <td>VAR${item.id.toString().padStart(4, '0')}</td>
+                                <td>${item.name}</td>
+                                <td class="text-end">${item.initialStock}</td>
+                                <td class="text-end">${item.purchases}</td>
+                                <td class="text-end">${item.adjustmentsIn}</td>
+                                <td class="text-end">${item.sales}</td>
+                                <td class="text-end">${item.adjustmentsOut}</td>
+                                <td class="text-end">${item.finalStock}</td>
+                                <td class="text-end">${formatCurrency(item.hpp)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
     },
     "Stock Opname": {
-        fetchData: async (year) => {
-            const startDate = `${year}-01-01`;
-            const endDate = `${year}-12-31`;
-            
+        fetchData: async (startDate, endDate) => {
             const { data: logs, error } = await supabase
                 .from('log_opname')
                 .select(`
@@ -433,7 +913,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 logs
             };
         },
-        template: (data, year) => {
+        template: (data, startDate, endDate) => {
+            const start = new Date(startDate).toLocaleDateString('id-ID');
+            const end = new Date(endDate).toLocaleDateString('id-ID');
             return `
             <div class="stock-opname-report">
                 <h4 class="report-header">Laporan Stock Opname Tahun ${year}</h4>
@@ -521,7 +1003,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Generate report function
     async function generateReport() {
         const jenis = jenisSelect.value;
-        const year = periodeSelect.value;
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        // Validate date range
+        if (!startDate || !endDate) {
+            showToast('Harap pilih rentang tanggal', 'error');
+            return;
+        }
+        
+        if (new Date(startDate) > new Date(endDate)) {
+            showToast('Tanggal mulai tidak boleh lebih besar dari tanggal akhir', 'error');
+            return;
+        }
         
         try {
             // Show loading state
@@ -529,18 +1023,18 @@ document.addEventListener('DOMContentLoaded', () => {
             generateSpinner.style.display = 'inline-block';
             generateBtn.disabled = true;
             
-            // Fetch data
-            const data = await reportData[jenis].fetchData(year);
+            // Fetch data with date range
+            const data = await reportData[jenis].fetchData(startDate, endDate);
             
-            // Generate HTML
-            const content = reportData[jenis].template(data, year);
+            // Generate HTML with date range
+            const content = reportData[jenis].template(data, startDate, endDate);
             reportContent.innerHTML = content;
         } catch (error) {
             console.error('Error generating report:', error);
             reportContent.innerHTML = `
-            <div class="alert alert-danger">
-                Gagal memuat laporan: ${error.message}
-            </div>
+                <div class="alert alert-danger">
+                    Gagal memuat laporan: ${error.message}
+                </div>
             `;
         } finally {
             // Reset loading state
@@ -578,8 +1072,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const pdf = new jsPDF('p', 'mm', 'a4');
         const margin = 20;
         let yPos = 30;
-        const year = periodeSelect.value;
         const jenis = jenisSelect.value;
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        // Validate date range
+        if (!startDate || !endDate) {
+            showToast('Harap pilih rentang tanggal', 'error');
+            return;
+        }
+        
+        if (new Date(startDate) > new Date(endDate)) {
+            showToast('Tanggal mulai tidak boleh lebih besar dari tanggal akhir', 'error');
+            return;
+        }
+        
+        // Update title to show date range
+        const start = new Date(startDate).toLocaleDateString('id-ID');
+        const end = new Date(endDate).toLocaleDateString('id-ID');
         
         // 1. Letterhead Header
         pdf.setFont('helvetica', 'bold');
@@ -599,11 +1109,12 @@ document.addEventListener('DOMContentLoaded', () => {
         yPos += 8;
         
         pdf.setFontSize(12);
-        pdf.text(`TAHUN ${year}`, 105, yPos, {align: 'center'});
+        pdf.text(`${start} - ${end}`, 105, yPos, {align: 'center'});
         yPos += 15;
         
         // 3. Get report data
-        const data = await reportData[jenis].fetchData(year);
+        const data = await reportData[jenis].fetchData(startDate, endDate);
+        const groupBy = document.getElementById('groupBy')?.value || 'order';
         
         // 4. Generate report-specific content
         switch(jenis) {
@@ -611,12 +1122,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 generateProfitLossTable(pdf, data, yPos, margin);
                 break;
                 
+            // In the generatePDF function:
             case 'Pembelian':
-                generateTransactionTable(pdf, data, yPos, margin, 'Supplier');
+                if (groupBy === 'supplier') {
+                    generateByEntity(pdf, data, yPos, margin, {
+                        entityType: 'supplier',
+                        entityLabel: 'SUPPLIER',
+                        amountLabel: 'TOTAL DIBERIKAN (Rp)'
+                    });
+                } else if (groupBy === 'product') {
+                    generateByProduct(pdf, data, yPos, margin, {
+                        entityLabel: 'SUPPLIER',
+                        amountLabel: 'TOTAL DIBERIKAN (Rp)',
+                        qtyLabel: 'TOTAL DIBELI'
+                    });
+                } else {
+                    generateByOrder(pdf, data, yPos, margin, {
+                        prefix: 'PO',
+                        contactLabel: 'Supplier',
+                        reportLabel: 'Pembelian',
+                        itemField: 'item_pesanan_pembelian',
+                        isPenjualan: false
+                    });
+                }
                 break;
-                
+
             case 'Penjualan':
-                generateTransactionTable(pdf, data, yPos, margin, 'Pelanggan');
+                if (groupBy === 'customer') {
+                    generateByEntity(pdf, data, yPos, margin, {
+                        entityType: 'customer',
+                        entityLabel: 'BAKUL',
+                        amountLabel: 'TOTAL DIBERIKAN (Rp)'
+                    });
+                } else if (groupBy === 'product') {
+                    generateByProduct(pdf, data, yPos, margin, {
+                        entityLabel: 'BAKUL',
+                        amountLabel: 'TOTAL PENDAPATAN (Rp)',
+                        qtyLabel: 'TOTAL TERJUAL'
+                    });
+                } else {
+                    generateByOrder(pdf, data, yPos, margin, {
+                        prefix: 'SO',
+                        contactLabel: 'Bakul',
+                        reportLabel: 'Penjualan',
+                        itemField: 'item_pesanan_penjualan',
+                        isPenjualan: true
+                    });
+                }
                 break;
                 
             case 'Kartu Stok':
@@ -631,7 +1183,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 5. Add footer to all pages
         addFooter(pdf, margin);
         
-        pdf.save(`Laporan_${jenis}_${year}.pdf`);
+        pdf.save(`Laporan_${jenis}_${new Date().getFullYear()}.pdf`);
     }
     
     // ===== REPORT TYPE TEMPLATES ===== //
@@ -653,15 +1205,23 @@ document.addEventListener('DOMContentLoaded', () => {
             startY: yPos,
             margin: {left: margin, right: margin},
             headStyles: {
-                fillColor: [13, 71, 161],
-                textColor: 255,
+                fillColor: [255, 255, 255],
+                textColor: 0,
                 fontStyle: 'bold',
-                fontSize: 11
+                fontSize: 11,
+                lineWidth: 0.1,             // thin border
+                lineColor: [0, 0, 0]
             },
             bodyStyles: {
-                textColor: [33, 33, 33],
-                fontSize: 10,
-                cellPadding: 5
+                fillColor: [255, 255, 255], // white background for rows
+                textColor: 0,               // black text
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0],
+                cellPadding: 2,
+                fontSize: 10
+            },
+            alternateRowStyles: {
+                fillColor: [255, 255, 255] // disable striping
             },
             columnStyles: {
                 1: {
@@ -673,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Highlight important rows
                 const highlightRows = [0, 2, 4]; // Pendapatan, Laba Kotor, Laba Bersih
                 if (highlightRows.includes(data.row.index)) {
-                    pdf.setFillColor(227, 242, 253); // Light blue highlight
+                    pdf.setFillColor(255, 255, 255); // Light blue highlight
                     pdf.rect(
                         data.cell.x - 1,
                         data.cell.y - 1,
@@ -699,36 +1259,41 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    
-    function generateTransactionTable(pdf, data, yPos, margin, contactType) {
-        const isPurchase = contactType === 'Supplier';
-        const prefix = isPurchase ? 'PO' : 'SO';
-        const contactLabel = isPurchase ? 'Supplier' : 'Pelanggan';
 
+    function generateByEntity(pdf, data, yPos, margin, options) {
+        const { entityType, entityLabel, amountLabel } = options;
+        const totalAmount = data.reduce((sum, item) => sum + (item.totalPaid || item.totalRevenue || 0), 0);
+        const totalItems = data.reduce((sum, item) => sum + (item.totalItems || item.totalSold || 0), 0);
+        
         const headers = [
             'NO', 
-            'TANGGAL', 
-            `ID ${prefix}`, 
-            contactLabel.toUpperCase(), 
-            'TOTAL ITEMS', 
-            'TOTAL (Rp)'
+            entityLabel,
+            'TOTAL PESANAN', 
+            entityType === 'product' ? 'TOTAL ITEMS' : 'TOTAL ITEMS',
+            amountLabel
         ];
         
         const body = data.map((item, index) => [
             index + 1,
-            formatDate(item.tanggal_pesan),
-            `${prefix}-${item.id.toString().padStart(4, '0')}`,
-            isPurchase 
-                ? `${item.supplier?.perusahaan || '-'}\n${item.supplier?.cp || ''}`
-                : item.bakul?.nama || 'Walk-in',
-            item.total_items || 0,
-            formatCurrencyPDF(item.total_dibayarkan)
+            entityType === 'supplier' ? 
+                `${item.supplier?.perusahaan || '-'}\n${item.supplier?.cp || '-'}` :
+                entityType === 'customer' ?
+                item.customer :
+                item.product,
+            item.totalOrders,
+            entityType === 'product' ? 
+                (item.totalPurchased || item.totalSold) : 
+                item.totalItems,
+            formatCurrencyPDF(item.totalPaid || item.totalRevenue || item.totalDibayarkan)
         ]);
         
-        // Add total row
-        const totalAmount = data.reduce((sum, item) => sum + (item.total_dibayarkan || 0), 0);
-        const totalItems = data.reduce((sum, item) => sum + (item.total_items || 0), 0);
-        body.push(['', '', '', 'TOTAL', totalItems, formatCurrencyPDF(totalAmount)]);
+        body.push([
+            '', 
+            'TOTAL',
+            data.length,
+            totalItems,
+            formatCurrencyPDF(totalAmount)
+        ]);
         
         pdf.autoTable({
             head: [headers],
@@ -736,38 +1301,506 @@ document.addEventListener('DOMContentLoaded', () => {
             startY: yPos,
             margin: {left: margin, right: margin},
             headStyles: {
-                fillColor: [50, 50, 50],       // Dark gray header (almost black)
-                textColor: 255,                 // White text
-                fontStyle: 'bold'
+                fillColor: [255, 255, 255],
+                textColor: 0,
+                fontStyle: 'bold',
+                lineWidth: 0.1,             // thin border
+                lineColor: [0, 0, 0]
+            },
+            bodyStyles: {
+                fillColor: [255, 255, 255], // white background for rows
+                textColor: 0,               // black text
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0],
+            },
+            alternateRowStyles: {
+                fillColor: [255, 255, 255] // disable striping
             },
             columnStyles: {
+                2: {halign: 'right'},
+                3: {halign: 'right'},
                 4: {halign: 'right'},
-                5: {halign: 'right'},
                 [body.length-1]: {
-                    fontStyle: 'bold', 
-                    fillColor: [220, 220, 220], // Light gray for total row
-                    textColor: 0,               // Black text
-                    halign: 'right'
+                    fontStyle: 'bold',
+                    fillColor: [220, 220, 220]
                 }
             },
             styles: {
                 fontSize: 10,
-                cellPadding: 4,
-                overflow: 'linebreak',
-                textColor: 0,                   // Black text for all cells
-                fillColor: 255                   // White background for data rows
-            },
-            didParseCell: (data) => {
-                if (data.row.index === body.length-1) {
-                    data.cell.styles.fontStyle = 'bold';
-                    if (data.column.index === 3) {
-                        data.cell.colSpan = 2;
-                        data.cell.halign = 'left';
-                    }
-                }
+                cellPadding: 2,
+                overflow: 'linebreak'
             }
         });
     }
+
+    function generateByProduct(pdf, data, yPos, margin, options) {
+        const { entityLabel, amountLabel } = options;
+        const totalQty = data.reduce((sum, item) => sum + (item.totalPurchased || item.totalSold || 0), 0);
+        const totalAmount = data.reduce((sum, item) => sum + (item.totalDibayarkan || item.totalRevenue || 0), 0);
+        
+        const headers = [
+            'NO', 
+            'PRODUK',
+            entityLabel,
+            'TOTAL PESANAN',
+            options.qtyLabel,
+            amountLabel
+        ];
+        
+        const body = data.map((item, index) => [
+            index + 1,
+            item.product,
+            item.suppliers || item.customers || '-',
+            item.totalOrders,
+            item.totalPurchased || item.totalSold,
+            formatCurrencyPDF(item.totalDibayarkan || item.totalRevenue)
+        ]);
+        
+        body.push([
+            '', 
+            'TOTAL', 
+            '', 
+            data.length, 
+            totalQty, 
+            formatCurrencyPDF(totalAmount)
+        ]);
+        
+        pdf.autoTable({
+            head: [headers],
+            body: body,
+            startY: yPos,
+            margin: {left: margin, right: margin},
+            headStyles: {
+                fillColor: [255, 255, 255],
+                textColor: 0,
+                fontStyle: 'bold',
+                lineWidth: 0.1,             // thin border
+                lineColor: [0, 0, 0]
+            },
+            bodyStyles: {
+                fillColor: [255, 255, 255], // white background for rows
+                textColor: 0,               // black text
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0],
+            },
+            alternateRowStyles: {
+                fillColor: [255, 255, 255] // disable striping
+            },
+            columnStyles: {
+                3: {halign: 'right'},
+                4: {halign: 'right'},
+                5: {halign: 'right'},
+                [body.length-1]: {
+                    fontStyle: 'bold',
+                    fillColor: [255, 255, 255]
+                }
+            },
+            styles: {
+                fontSize: 10,
+                cellPadding: 2,
+                overflow: 'linebreak'
+            }
+        });
+    }
+
+    function generateByOrder(pdf, data, yPos, margin, options) {
+        const { prefix, contactLabel, reportLabel, itemField, isPenjualan } = options;
+        const total = data.reduce((sum, order) => sum + (order.total_dibayarkan || 0), 0);
+        
+        // Add title for orders list
+        pdf.setFontSize(12);
+        pdf.setTextColor(0);
+        pdf.text(`Daftar Pesanan ${reportLabel}`, margin, yPos);
+        yPos += 10;
+        
+        // Process each order
+        data.forEach((order, orderIndex) => {
+            const orderTotalItems = order[itemField]?.reduce((sum, item) => sum + (item.qty_dipesan || 0), 0) || 0;
+            
+            // Add order header
+            pdf.setFontSize(10);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text(`${prefix}-${order.id.toString().padStart(4, '0')} - ${formatDate(order.tanggal_pesan)}`, margin, yPos);
+            yPos += 5;
+            
+            pdf.setFont('helvetica', 'normal');
+            if (isPenjualan) {
+                pdf.text(`${contactLabel}: ${order.bakul?.nama || 'Walk-in'}`, margin, yPos);
+            } else {
+                pdf.text(`${contactLabel}: ${order.supplier?.perusahaan || '-'} (${order.supplier?.cp || '-'})`, margin, yPos);
+            }
+            yPos += 5;
+            pdf.text(`Total: ${formatCurrencyPDF(order.total_dibayarkan)}`, margin, yPos);
+            yPos += 5;
+            
+            // Prepare items table - modified to include price difference for sales
+            const headers = isPenjualan 
+                ? ['PRODUK', 'QTY', 'HARGA SATUAN', 'HARGA STANDAR', 'DISKON/KENAIKAN', 'SUBTOTAL']
+                : ['PRODUK', 'QTY', 'HARGA SATUAN', 'SUBTOTAL'];
+            
+            const body = (order[itemField] || []).map(item => {
+                const productName = item.varian?.produk?.nama 
+                    ? `${item.varian.produk.nama} - ${item.varian.varian || ''}` 
+                    : 'Unknown Product';
+                
+                if (isPenjualan) {
+                    const standardPrice = item.varian?.harga_standar || 0;
+                    const difference = item.priceDifference || 0;
+                    const differenceText = difference === 0 
+                        ? '0' 
+                        : (difference > 0 ? `+${formatCurrencyPDF(difference)}` : formatCurrencyPDF(difference));
+                    
+                    return [
+                        productName,
+                        item.qty_dipesan || 0,
+                        formatCurrencyPDF(item.harga_jual),
+                        formatCurrencyPDF(standardPrice),
+                        { 
+                            content: differenceText,
+                            styles: {
+                                textColor: difference > 0 ? [0, 128, 0] : difference < 0 ? [255, 0, 0] : [0, 0, 0]
+                            }
+                        },
+                        formatCurrencyPDF((item.qty_dipesan || 0) * (item.harga_jual || 0))
+                    ];
+                } else {
+                    return [
+                        productName,
+                        item.qty_dipesan || 0,
+                        formatCurrencyPDF(item.harga_beli || 0),
+                        formatCurrencyPDF((item.qty_dipesan || 0) * (item.harga_beli || 0))
+                    ];
+                }
+            });
+            
+            // Generate items table
+            pdf.autoTable({
+                head: [headers],
+                body: body,
+                startY: yPos,
+                margin: {left: margin, right: margin},
+                headStyles: {
+                    fillColor: [255,255,255],
+                    textColor: 0,
+                    fontStyle: 'bold',
+                    lineWidth: 0.1,             // thin border
+                    lineColor: [0, 0, 0]
+                },
+                bodyStyles: {
+                    fillColor: [255, 255, 255], // white background for rows
+                    textColor: 0,               // black text
+                    lineWidth: 0.1,
+                    lineColor: [0, 0, 0],
+                },
+                columnStyles: {
+                    // index 0: "PRODUK"
+                    0: { cellWidth: 35 }, // make this the widest
+
+                    // index 1: "QTY"
+                    1: { cellWidth: 12, halign: 'right' },
+
+                    // index 2: "HARGA SATUAN"
+                    2: { cellWidth: 30, halign: 'right' },
+
+                    ...(isPenjualan ? {
+                        // index 3: "HARGA STANDAR"
+                        3: { cellWidth: 32, halign: 'right' },
+                        // index 4: "DISKON/KENAIKAN"
+                        4: { cellWidth: 35, halign: 'right' },
+                        // index 5: "SUBTOTAL"
+                        5: { cellWidth: 25, halign: 'right' }
+                    } : {
+                        // index 3: "SUBTOTAL"
+                        3: { cellWidth: 25, halign: 'right' }
+                    })
+                },
+                alternateRowStyles: {
+                    fillColor: [255, 255, 255] // disable striping
+                },
+                styles: {
+                    fontSize: 9,
+                    cellPadding: 2,
+                    overflow: 'linebreak'
+                },
+                didDrawPage: (data) => {
+                    yPos = data.cursor.y + 5;
+                }
+            });
+            
+            yPos += 10;
+            
+            // Add page break if needed
+            if (yPos > 250 && orderIndex < data.length - 1) {
+                pdf.addPage();
+                yPos = 30;
+            }
+        });
+        
+        // Add total at the end
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`Total ${reportLabel}: ${formatCurrencyPDF(total)}`, margin, yPos);
+    }
+
+    // pembelian
+    // function generatePembelianBySupplier(pdf, data, yPos, margin) {
+    //     const totalPaid = data.reduce((sum, item) => sum + (item.totalPaid || 0), 0);
+    //     const totalItems = data.reduce((sum, item) => sum + (item.totalItems || 0), 0);
+        
+    //     // Prepare table data
+    //     const headers = ['NO', 'SUPPLIER', 'TOTAL PESANAN', 'TOTAL ITEMS', 'TOTAL (Rp)'];
+    //     const body = data.map((item, index) => [
+    //         index + 1,
+    //         `${item.supplier?.perusahaan || '-'}\n${item.supplier?.cp || '-'}`,
+    //         item.totalOrders,
+    //         item.totalItems,
+    //         formatCurrencyPDF(item.totalPaid)
+    //     ]);
+        
+    //     // Add total row
+    //     body.push([
+    //         '',
+    //         'TOTAL',
+    //         data.length,
+    //         totalItems,
+    //         formatCurrencyPDF(totalPaid)
+    //     ]);
+        
+    //     // Generate table
+    //     pdf.autoTable({
+    //         head: [headers],
+    //         body: body,
+    //         startY: yPos,
+    //         margin: {left: margin, right: margin},
+    //         headStyles: {
+    //             fillColor: [13, 71, 161],
+    //             textColor: 255,
+    //             fontStyle: 'bold'
+    //         },
+    //         columnStyles: {
+    //             2: {halign: 'right'},
+    //             3: {halign: 'right'},
+    //             4: {halign: 'right'},
+    //             [body.length-1]: {
+    //                 fontStyle: 'bold',
+    //                 fillColor: [220, 220, 220]
+    //             }
+    //         },
+    //         styles: {
+    //             fontSize: 10,
+    //             cellPadding: 4,
+    //             overflow: 'linebreak'
+    //         },
+    //         didParseCell: (data) => {
+    //             if (data.row.index === body.length-1) {
+    //                 data.cell.styles.fontStyle = 'bold';
+    //                 if (data.column.index === 1) {
+    //                     data.cell.colSpan = 1;
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
+
+    // function generatePembelianByProduct(pdf, data, yPos, margin) {
+    //     const totalPurchased = data.reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
+        
+    //     // Prepare table data
+    //     const headers = ['NO', 'PRODUK', 'TOTAL DIBELI', 'SUPPLIER'];
+    //     const body = data.map((item, index) => [
+    //         index + 1,
+    //         item.product,
+    //         item.totalPurchased,
+    //         item.suppliers || '-'
+    //     ]);
+        
+    //     // Add total row
+    //     body.push([
+    //         '',
+    //         'TOTAL',
+    //         totalPurchased,
+    //         ''
+    //     ]);
+        
+    //     // Generate table
+    //     pdf.autoTable({
+    //         head: [headers],
+    //         body: body,
+    //         startY: yPos,
+    //         margin: {left: margin, right: margin},
+    //         headStyles: {
+    //             fillColor: [13, 71, 161],
+    //             textColor: 255,
+    //             fontStyle: 'bold'
+    //         },
+    //         columnStyles: {
+    //             2: {halign: 'right'},
+    //             [body.length-1]: {
+    //                 fontStyle: 'bold',
+    //                 fillColor: [220, 220, 220]
+    //             }
+    //         },
+    //         styles: {
+    //             fontSize: 10,
+    //             cellPadding: 4,
+    //             overflow: 'linebreak'
+    //         },
+    //         didParseCell: (data) => {
+    //             if (data.row.index === body.length-1) {
+    //                 data.cell.styles.fontStyle = 'bold';
+    //                 if (data.column.index === 1) {
+    //                     data.cell.colSpan = 1;
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
+
+    // function generatePembelianByOrder(pdf, data, yPos, margin) {
+    //     const total = data.reduce((sum, order) => sum + (order.total_dibayarkan || 0), 0);
+        
+    //     // Add title for orders list
+    //     pdf.setFontSize(12);
+    //     pdf.setTextColor(0);
+    //     pdf.text('Daftar Pesanan Pembelian', margin, yPos);
+    //     yPos += 10;
+        
+    //     // Process each order
+    //     data.forEach((order, orderIndex) => {
+    //         const orderTotalItems = order.item_pesanan_pembelian?.reduce((sum, item) => sum + (item.qty_dipesan || 0), 0) || 0;
+            
+    //         // Add order header
+    //         pdf.setFontSize(10);
+    //         pdf.setFont('helvetica', 'bold');
+    //         pdf.text(`PO-${order.id.toString().padStart(4, '0')} - ${formatDate(order.tanggal_pesan)}`, margin, yPos);
+    //         yPos += 5;
+            
+    //         pdf.setFont('helvetica', 'normal');
+    //         pdf.text(`Supplier: ${order.supplier?.perusahaan || '-'} (${order.supplier?.cp || '-'})`, margin, yPos);
+    //         yPos += 5;
+    //         pdf.text(`Total: ${formatCurrencyPDF(order.total_dibayarkan)}`, margin, yPos);
+    //         yPos += 10;
+            
+    //         // Prepare items table
+    //         const headers = ['PRODUK', 'QTY', 'HARGA SATUAN', 'SUBTOTAL'];
+    //         const body = (order.item_pesanan_pembelian || []).map(item => {
+    //             const productName = item.varian?.produk?.nama 
+    //                 ? `${item.varian.produk.nama} - ${item.varian.varian || ''}` 
+    //                 : 'Unknown Product';
+    //             return [
+    //                 productName,
+    //                 item.qty_dipesan || 0,
+    //                 formatCurrencyPDF(item.harga_beli || 0),
+    //                 formatCurrencyPDF((item.qty_dipesan || 0) * (item.harga_beli || 0))
+    //             ];
+    //         });
+            
+    //         // Generate items table
+    //         pdf.autoTable({
+    //             head: [headers],
+    //             body: body,
+    //             startY: yPos,
+    //             margin: {left: margin, right: margin},
+    //             headStyles: {
+    //                 fillColor: [220, 220, 220],
+    //                 textColor: 0,
+    //                 fontStyle: 'bold'
+    //             },
+    //             columnStyles: {
+    //                 1: {halign: 'right'},
+    //                 2: {halign: 'right'},
+    //                 3: {halign: 'right'}
+    //             },
+    //             styles: {
+    //                 fontSize: 9,
+    //                 cellPadding: 3
+    //             },
+    //             didDrawPage: (data) => {
+    //                 yPos = data.cursor.y + 10;
+    //             }
+    //         });
+            
+    //         yPos += 15; // Add space between orders
+            
+    //         // Add page break if needed
+    //         if (yPos > 250 && orderIndex < data.length - 1) {
+    //             pdf.addPage();
+    //             yPos = 30;
+    //         }
+    //     });
+        
+    //     // Add total at the end
+    //     pdf.setFont('helvetica', 'bold');
+    //     pdf.text(`Total Pembelian: ${formatCurrencyPDF(total)}`, margin, yPos);
+    // }
+    
+    // function generateTransactionTable(pdf, data, yPos, margin, contactType) {
+    //     const isPurchase = contactType === 'Supplier';
+    //     const prefix = isPurchase ? 'PO' : 'SO';
+    //     const contactLabel = isPurchase ? 'Supplier' : 'Pelanggan';
+
+    //     const headers = [
+    //         'NO', 
+    //         'TANGGAL', 
+    //         `ID ${prefix}`, 
+    //         contactLabel.toUpperCase(), 
+    //         'TOTAL ITEMS', 
+    //         'TOTAL (Rp)'
+    //     ];
+        
+    //     const body = data.map((item, index) => [
+    //         index + 1,
+    //         formatDate(item.tanggal_pesan),
+    //         `${prefix}-${item.id.toString().padStart(4, '0')}`,
+    //         isPurchase 
+    //             ? `${item.supplier?.perusahaan || '-'}\n${item.supplier?.cp || ''}`
+    //             : item.bakul?.nama || 'Walk-in',
+    //         item.total_items || 0,
+    //         formatCurrencyPDF(item.total_dibayarkan)
+    //     ]);
+        
+    //     // Add total row
+    //     const totalAmount = data.reduce((sum, item) => sum + (item.total_dibayarkan || 0), 0);
+    //     const totalItems = data.reduce((sum, item) => sum + (item.total_items || 0), 0);
+    //     body.push(['', '', '', 'TOTAL', totalItems, formatCurrencyPDF(totalAmount)]);
+        
+    //     pdf.autoTable({
+    //         head: [headers],
+    //         body: body,
+    //         startY: yPos,
+    //         margin: {left: margin, right: margin},
+    //         headStyles: {
+    //             fillColor: [50, 50, 50],       // Dark gray header (almost black)
+    //             textColor: 255,                 // White text
+    //             fontStyle: 'bold'
+    //         },
+    //         columnStyles: {
+    //             4: {halign: 'right'},
+    //             5: {halign: 'right'},
+    //             [body.length-1]: {
+    //                 fontStyle: 'bold', 
+    //                 fillColor: [220, 220, 220], // Light gray for total row
+    //                 textColor: 0,               // Black text
+    //                 halign: 'right'
+    //             }
+    //         },
+    //         styles: {
+    //             fontSize: 10,
+    //             cellPadding: 4,
+    //             overflow: 'linebreak',
+    //             textColor: 0,                   // Black text for all cells
+    //             fillColor: 255                   // White background for data rows
+    //         },
+    //         didParseCell: (data) => {
+    //             if (data.row.index === body.length-1) {
+    //                 data.cell.styles.fontStyle = 'bold';
+    //                 if (data.column.index === 3) {
+    //                     data.cell.colSpan = 2;
+    //                     data.cell.halign = 'left';
+    //                 }
+    //             }
+    //         }
+    //     });
+    // }
     
     function generateStockCardTable(pdf, data, yPos, margin) {
         pdf.autoTable({

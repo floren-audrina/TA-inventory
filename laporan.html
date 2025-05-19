@@ -43,7 +43,7 @@
                 <div class="card mb-4 border-0 bg-light">
                     <div class="card-body">
                         <div class="row g-3 align-items-end">
-                            <div class="col-md-5">
+                            <div class="col-md-4">
                                 <label class="form-label">Jenis Laporan</label>
                                 <select id="jenis" class="form-select">
                                     <option value="" selected disabled>Pilih Jenis Laporan</option>
@@ -55,16 +55,25 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label">Periode</label>
-                                <select id="periode" class="form-select">
-                                    <option value="" selected disabled>Pilih Periode Laporan</option>
-                                    <option value="2021">2021</option>
-                                    <option value="2022">2022</option>
-                                    <option value="2023">2023</option>
-                                    <option value="2024">2024</option>
-                                    <option value="2025">2025</option>
-                                </select>
+                            <div class="col-md-8">
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Dari Tanggal</label>
+                                        <input type="date" class="form-control" id="startDate">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Sampai Tanggal</label>
+                                        <input type="date" class="form-control" id="endDate">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row mb-1 mt-3">
+                                <div class="col-md-12">
+                                    <div id="groupByContainer" style="display: none;">
+                                        <!-- The group by dropdown will be inserted here -->
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="col-md-3">

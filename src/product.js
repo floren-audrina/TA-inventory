@@ -1097,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Setup other event listeners
     document.getElementById('addProductBtn').addEventListener('click', () => openProductModal('add'));
-    document.getElementById('addVariantBtn').addEventListener('click', addVariantRow);
+    document.getElementById('addVariantBtn').addEventListener('click', () => addVariantRow());
     document.getElementById('saveProductBtn').addEventListener('click', saveProduct);
 
     // Search functionality
