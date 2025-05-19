@@ -20,6 +20,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     } else {
         // Redirect to dashboard on successful login
         console.log('User logged in:', data.user);
-        window.location.href = '../product.html';
+        window.location.href = '../TA-inventory/product.html';
     }
 });
