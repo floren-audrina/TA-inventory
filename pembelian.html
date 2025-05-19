@@ -92,6 +92,10 @@
             }
         }
     </style>
+  <script type="module" crossorigin src="/TA-inventory/assets/pembelian-DQFDbxUO.js"></script>
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-C7Nb5uSA.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/import-Cn2uwdsk.js">
 </head>
 <body class="p-4 bg-light">
     <div id="navbar"></div>
@@ -103,7 +107,7 @@
     
                 // Load the navbar.js script after the navbar content is injected
                 const script = document.createElement('script');
-                script.src = '../src/navbar.js';
+                script.src = './src/navbar.js';
                 script.type = 'module'; // Ensure the script is treated as a module
                 document.body.appendChild(script);
             })
@@ -261,7 +265,6 @@
             <div id="toastContainer" class="toast-container position-fixed top-0 end-0 p-3"></div>
         </div>
     </div>
-
-    <script type="module" src="../src/pembelian.js"></script>
+
 </body>
 </html>

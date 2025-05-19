@@ -67,6 +67,9 @@
             }
         }
     </style>
+  <script type="module" crossorigin src="/TA-inventory/assets/dashboard-lkelujR2.js"></script>
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-C7Nb5uSA.js">
 </head>
 <body class="p-4 bg-light">
     <div class="container-fluid mt-0">
@@ -79,7 +82,7 @@
         
                     // Load the navbar.js script after the navbar content is injected
                     const script = document.createElement('script');
-                    script.src = '../src/navbar.js';
+                    script.src = './src/navbar.js';
                     script.type = 'module'; 
                     document.body.appendChild(script);
                 })
@@ -549,7 +552,6 @@
     </div>
 
     <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3"></div>
-    <!-- JavaScript files -->
-    <script type="module" src="../src/dashboard.js"></script>
+    <!-- JavaScript files -->
 </body>
 </html>

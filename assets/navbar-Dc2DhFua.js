@@ -1,0 +1,1 @@
+import"./modulepreload-polyfill-B5Qt9EMX.js";const e=document.getElementById("sidebar"),n=document.getElementById("menu-toggle");n.addEventListener("click",()=>{e.classList.toggle("active")});document.addEventListener("click",t=>{!e.contains(t.target)&&!n.contains(t.target)&&e.classList.remove("active")});

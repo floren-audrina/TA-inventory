@@ -109,6 +109,9 @@
             min-width: 100px;
         }
     </style>
+  <script type="module" crossorigin src="/TA-inventory/assets/product-CKLJAVa9.js"></script>
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-C7Nb5uSA.js">
 </head>
 <body>
     <div id="navbar"></div>
@@ -118,7 +121,7 @@
             .then(html => {
                 document.getElementById("navbar").innerHTML = html;
                 const script = document.createElement('script');
-                script.src = '../src/navbar.js';
+                script.src = './src/navbar.js';
                 script.type = 'module';
                 document.body.appendChild(script);
             })
@@ -263,7 +266,6 @@
     <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
         <!-- Toast messages will be dynamically inserted here -->
     </div>
-
-    <script type="module" src="../src/product.js"></script>
+
 </body>
 </html>
