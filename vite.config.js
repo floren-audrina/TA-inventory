@@ -1,5 +1,5 @@
 export default {
-  base: '/TA-inventory/',  // 🔁 Replace with your repo name!
+  base: '/TA-inventory/', 
   server: {
     port: 3000,
   },
