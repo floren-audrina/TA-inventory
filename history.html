@@ -68,27 +68,14 @@
             transform: translateX(-2px);
         }
     </style>
-  <script type="module" crossorigin src="/TA-inventory/assets/history-SnGqv4uc.js"></script>
+  <script type="module" crossorigin src="/TA-inventory/assets/history-PDuE9cUC.js"></script>
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/navbar-Cw31nkU0.js">
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-C7Nb5uSA.js">
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/import-Cn2uwdsk.js">
 </head>
 <body>
-    <div id="navbar"></div>
-    <script>
-        fetch("navbar.html")
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById("navbar").innerHTML = html;
-    
-                // Load the navbar.js script after the navbar content is injected
-                const script = document.createElement('script');
-                script.src = './src/navbar.js';
-                script.type = 'module'; 
-                document.body.appendChild(script);
-            })
-            .catch(error => console.error('Error loading navbar:', error));
-    </script>
+    <div id="navbar"></div>
 
     <div class="container mt-4" id="main-content">
         <div class="d-flex align-items-center mb-4">

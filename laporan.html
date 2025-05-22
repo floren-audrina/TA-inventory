@@ -16,27 +16,13 @@
       margin-bottom: 20px;
     }
   </style>
-  <script type="module" crossorigin src="/TA-inventory/assets/laporan-DYWR9YM5.js"></script>
+  <script type="module" crossorigin src="/TA-inventory/assets/laporan-COiXHBU5.js"></script>
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/navbar-Cw31nkU0.js">
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-C7Nb5uSA.js">
 </head>
 <body class="bg-light">
-
-    <div id="navbar"></div>
-    <script>
-        fetch("navbar.html")
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById("navbar").innerHTML = html;
-    
-                // Load the navbar.js script after the navbar content is injected
-                const script = document.createElement('script');
-                script.src = './src/navbar.js';
-                script.type = 'module'; // Ensure the script is treated as a module
-                document.body.appendChild(script);
-            })
-            .catch(error => console.error('Error loading navbar:', error));
-    </script>
+    <div id="navbar"></div>
     <div class="container mt-4" id="main-content">
         <div class="card shadow">
             <div class="card-body">
