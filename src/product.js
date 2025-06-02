@@ -1,4 +1,10 @@
 import supabase from './db_conn.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 let productModal;
 let currentProductId = null;
@@ -527,7 +533,10 @@ function updateTable(products, variantsByProduct) {
                                            <td>Rp ${variant.harga_standar.toLocaleString('id-ID')}</td>
                                            <td>${variant.jumlah_stok}</td>
                                            <td>${variant.stok_reservasi}</td>
-                                           <td><button class="btn btn-info btn-sm" onclick="viewVariantHistory(${variant.id})">Detail Varian</button></td>
+                                           <td>
+                                               <button class="btn btn-info btn-sm me-1" onclick="viewVariantHistory(${variant.id})">Detail</button>
+                                               <button class="btn btn-danger btn-sm" onclick="deleteVariant(${variant.id})">Hapus</button>
+                                           </td>
                                        </tr>
                                    `).join('')}
                                </tbody>
@@ -804,78 +813,83 @@ async function createProduct(productData) {
 
 async function updateProduct(productId, productData) {
     try {
-        // Update product
+        // 1. First update the product basic info
         const { error: productError } = await supabase
             .from('produk')
             .update({
                 nama: productData.nama,
-                id_subkategori: productData.id_subkategori,
-                id_supplier: productData.id_supplier,
-                qty_minimum: productData.qty_minimum
+                id_subkategori: parseInt(productData.id_subkategori),
+                id_supplier: parseInt(productData.id_supplier),
+                qty_minimum: parseFloat(productData.qty_minimum)
             })
             .eq('id', productId);
 
         if (productError) throw productError;
 
-        // Handle variants - update existing, create new, delete removed
-        const currentVariants = productData.variants;
-        
-        // Get existing variants for this product
-        const { data: existingVariants, error: variantsError } = await supabase
+        // 2. Handle variants
+        // Get current variants from database
+        const { data: dbVariants, error: variantsError } = await supabase
             .from('produk_varian')
-            .select('id')
+            .select('id, varian')
             .eq('id_produk', productId);
 
         if (variantsError) throw variantsError;
 
-        const existingVariantIds = existingVariants.map(v => v.varian);
-        const newVariantIds = currentVariants.filter(v => v.varian).map(v => v.varian);
+        // Separate variants from form into updates and creates
+        const variantsToUpdate = productData.variants.filter(v => v.id !== null);
+        const variantsToCreate = productData.variants.filter(v => v.id === null);
+        
+        // Determine variants to delete (exist in DB but not in form)
+        const dbVariantIds = dbVariants.map(v => v.id);
+        const formVariantIds = variantsToUpdate.map(v => parseInt(v.id));
+        const variantsToDelete = dbVariantIds.filter(id => !formVariantIds.includes(id));
 
-        // Variants to delete (exist in DB but not in current form data)
-        const variantsToDelete = existingVariantIds.filter(id => !newVariantIds.includes(id));
+        // Process deletions first
         if (variantsToDelete.length > 0) {
             const { error: deleteError } = await supabase
                 .from('produk_varian')
                 .delete()
-                .in('id_varian', variantsToDelete);
+                .in('id', variantsToDelete);
             
             if (deleteError) throw deleteError;
         }
 
-        // Process each variant
-        for (const variant of currentVariants) {
-            if (variant.id_varian) {
-                // Update existing variant
-                const { error: updateError } = await supabase
-                    .from('produk_varian')
-                    .update({
-                        varian: variant.varian,
-                        harga_standar: variant.harga_standar,
-                        jumlah_stok: variant.jumlah_stok,
-                        stok_reservasi: variant.stok_reservasi
-                    })
-                    .eq('id_varian', variant.id_varian);
-                
-                if (updateError) throw updateError;
-            } else {
-                // Create new variant
-                const { error: createError } = await supabase
-                    .from('produk_varian')
-                    .insert({
-                        id_produk: productId,
-                        varian: variant.varian,
-                        harga_standar: variant.harga_standar,
-                        jumlah_stok: variant.jumlah_stok,
-                        stok_reservasi: variant.stok_reservasi
-                    });
-                
-                if (createError) throw createError;
-            }
+        // Process updates
+        for (const variant of variantsToUpdate) {
+            const { error: updateError } = await supabase
+                .from('produk_varian')
+                .update({
+                    varian: variant.varian,
+                    harga_standar: parseFloat(variant.harga_standar),
+                    jumlah_stok: parseInt(variant.jumlah_stok),
+                    stok_reservasi: parseInt(variant.stok_reservasi || 0)
+                })
+                .eq('id', variant.id);
+            
+            if (updateError) throw updateError;
+        }
+
+        // Process creations
+        if (variantsToCreate.length > 0) {
+            const newVariants = variantsToCreate.map(variant => ({
+                id_produk: productId,
+                varian: variant.varian,
+                harga_standar: parseFloat(variant.harga_standar),
+                jumlah_stok: parseInt(variant.jumlah_stok),
+                stok_reservasi: parseInt(variant.stok_reservasi || 0)
+            }));
+
+            const { error: createError } = await supabase
+                .from('produk_varian')
+                .insert(newVariants);
+            
+            if (createError) throw createError;
         }
 
         showToast('Produk berhasil diperbarui');
     } catch (error) {
         console.error('Error updating product:', error);
+        showToast(`Gagal memperbarui produk: ${error.message}`, 'error');
         throw error;
     }
 }
@@ -1028,21 +1042,38 @@ async function loadSuppliers() {
     }
 }
 
+async function deleteVariant(variantId) {
+    if (!confirm('Apakah Anda yakin ingin menghapus varian ini?')) return;
+    
+    try {
+        // Delete the variant
+        const { error } = await supabase
+            .from('produk_varian')
+            .delete()
+            .eq('id', variantId);
+
+        if (error) throw error;
+
+        await fetchProducts(); // Refresh the product list
+        showToast('Varian berhasil dihapus');
+    } catch (error) {
+        console.error('Error deleting variant:', error);
+        showToast('Gagal menghapus varian', 'error');
+    }
+}
+
 async function deleteProduct(productId) {
     if (!confirm('Apakah Anda yakin ingin menghapus produk ini?')) return;
     
     try {
-        // First delete variants
-        await supabase
-            .from('produk_varian')
-            .delete()
-            .eq('id_produk', productId);
-
-        // Then delete product
-        await supabase
+        const { error } = await supabase
             .from('produk')
             .delete()
             .eq('id', productId);
+
+        if (error) {
+            throw error;
+        }
 
         await fetchProducts();
         showToast('Produk berhasil dihapus');
@@ -1148,3 +1179,4 @@ window.editProduct = async function(productId) {
 
 window.deleteProduct = deleteProduct;
 window.viewVariantHistory = viewVariantHistory;
+window.deleteVariant = deleteVariant;

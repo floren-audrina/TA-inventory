@@ -1,5 +1,11 @@
 import supabase from './db_conn.js';
 import { processEntry, updateVariantStock } from './import.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 // ========== Global Variables ==========
 let orderModal;
@@ -26,6 +32,13 @@ function formatDate(dateStr) {
         hour: '2-digit',
         minute: '2-digit'
     });
+}
+
+function toLocalInputDateTime(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return offsetDate.toISOString().slice(0, 16);
 }
 
 function formatCurrency(amount) {
@@ -589,7 +602,7 @@ function createOrderCard(order) {
     
     const dateP = document.createElement('p');
     dateP.className = 'mb-1';
-    dateP.innerHTML = `<strong>Tanggal Pemesanan:</strong> ${order.tanggal_pesan}`;
+    dateP.innerHTML = `<strong>Tanggal Pemesanan:</strong> ${formatDate(order.tanggal_pesan)}`;
     
     const supplierP = document.createElement('p');
     supplierP.className = 'mb-1';
@@ -650,6 +663,7 @@ function createOrderCard(order) {
         completeBtn.className = 'btn btn-sm btn-dark ms-2 complete-order';
         completeBtn.innerHTML = '<i class="bi bi-check-circle"></i> Selesaikan';
         completeBtn.dataset.orderId = order.id;
+        completeBtn.dataset.receivedDate = order.tanggal_diterima || new Date().toISOString();
         
         // Store all items data as JSON in the button
         const itemsData = order.items.map(item => ({
@@ -698,6 +712,7 @@ async function renderOngoingOrders() {
             .select(`
                 id,
                 tanggal_pesan,
+                tanggal_diterima,
                 status_pesanan,
                 supplier:id_supplier(perusahaan, cp),
                 items:item_pesanan_pembelian(
@@ -727,7 +742,7 @@ async function renderOngoingOrders() {
                 rowDiv.appendChild(createOrderCard(order));
             });
         } else {
-            rowDiv.innerHTML = '<div class="col-12 text-center text-muted">Tidak ada pesanan yang sedang berlangsung</div>';
+            rowDiv.innerHTML = '<div class="col-12 text-center text-muted">Tidak ada pesanan aktif</div>';
         }
         
         ongoingContainer.appendChild(rowDiv);
@@ -871,8 +886,7 @@ async function populateEditForm(orderId) {
         modal.dataset.currentStatus = order.status_pesanan;
 
         // Populate basic fields
-        document.getElementById('orderDate').value = order.tanggal_pesan ? 
-            new Date(order.tanggal_pesan).toISOString().slice(0, 16) : '';
+        document.getElementById('orderDate').value = toLocalInputDateTime(order.tanggal_pesan);
         document.getElementById('supplier').value = order.id_supplier;
         
         // Clear and prepare form
@@ -900,6 +914,14 @@ async function populateEditForm(orderId) {
 }
 
 function setupModalEvents() {
+    const addProductBtn = document.getElementById('addProduct');
+    const saveOrderBtn = document.getElementById('saveOrder');
+    const supplierSelect = document.getElementById('supplier');
+    
+    addProductBtn.replaceWith(addProductBtn.cloneNode(true));
+    saveOrderBtn.replaceWith(saveOrderBtn.cloneNode(true));
+    supplierSelect.replaceWith(supplierSelect.cloneNode(true));
+
     document.getElementById('addProduct').addEventListener('click', addProductRow);
     document.getElementById('saveOrder').addEventListener('click', async (e) => {
         e.preventDefault(); // Prevent form submission if needed
@@ -1213,8 +1235,7 @@ async function addStatusSpecificFields(order) {
                 <div class="col-md-4">
                     <label class="form-label">Tanggal Diterima</label>
                     <input type="datetime-local" class="form-control" id="tanggalDiterima" 
-                           value="${order.tanggal_diterima ? 
-                            new Date(order.tanggal_diterima).toISOString().slice(0, 16) : ''}">
+                           value="${toLocalInputDateTime(order.tanggal_diterima)}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Lokasi Penerimaan</label>
@@ -1247,8 +1268,7 @@ async function addStatusSpecificFields(order) {
                 <div class="col-md-4">
                     <label class="form-label">Tanggal Pembayaran</label>
                     <input type="datetime-local" class="form-control" id="tanggalPembayaran" 
-                           value="${order.tanggal_pembayaran ? 
-                            new Date(order.tanggal_pembayaran).toISOString().slice(0, 16) : ''}">
+                           value="${toLocalInputDateTime(order.tanggal_pembayaran)}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Total Dibayarkan</label>
@@ -1267,21 +1287,23 @@ async function addStatusSpecificFields(order) {
 }
 
 // HISTORY
-async function renderHistoryTable() {
+async function renderHistoryTable(startDate = null, endDate = null, supplierFilter = null, paymentFilter = null, locationFilter = null) {
     const historyTableBody = document.querySelector('#history tbody');
     if (!historyTableBody) return;
 
     historyTableBody.innerHTML = `
-        <div class="text-center my-4">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p>Memuat riwayat pembelian...</p>
-        </div>`;
+        <tr>
+            <td colspan="11" class="text-center my-4">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Memuat riwayat pembelian...</p>
+            </td>
+        </tr>`;
     
     try {
-        // Fetch completed orders (status = 'selesai')
-        const { data: orders, error } = await supabase
+        // Base query
+        let query = supabase
             .from('pesanan_pembelian')
             .select(`
                 id,
@@ -1307,6 +1329,22 @@ async function renderHistoryTable() {
             .eq('status_pesanan', 'selesai')
             .order('tanggal_pesan', { ascending: false });
 
+        // Apply filters
+        if (startDate && endDate) {
+            query = query.gte('tanggal_pesan', startDate).lte('tanggal_pesan', endDate);
+        }
+        if (supplierFilter) {
+            query = query.eq('id_supplier', supplierFilter);
+        }
+        if (paymentFilter) {
+            query = query.eq('alat_pembayaran', paymentFilter);
+        }
+        if (locationFilter) {
+            query = query.eq('lokasi_penerimaan', locationFilter);
+        }
+
+        const { data: orders, error } = await query;
+
         if (error) throw error;
 
         historyTableBody.innerHTML = '';
@@ -1314,9 +1352,9 @@ async function renderHistoryTable() {
         if (orders && orders.length > 0) {
             orders.forEach(order => {
                 // Format dates
-                const formattedOrderDate = new Date(order.tanggal_pesan).toLocaleDateString('id-ID');
-                const formattedReceivedDate = order.tanggal_diterima ? new Date(order.tanggal_diterima).toLocaleDateString('id-ID') : '-';
-                const formattedPaymentDate = order.tanggal_pembayaran ? new Date(order.tanggal_pembayaran).toLocaleDateString('id-ID') : '-';
+                const formattedOrderDate = formatDate(order.tanggal_pesan);
+                const formattedReceivedDate = order.tanggal_diterima ? formatDate(order.tanggal_diterima) : '-';
+                const formattedPaymentDate = order.tanggal_pembayaran ? formatDate(order.tanggal_pembayaran) : '-';
                 
                 // Calculate total quantities
                 const totalOrdered = order.items.reduce((sum, item) => sum + item.qty_dipesan, 0);
@@ -1334,7 +1372,7 @@ async function renderHistoryTable() {
                     <td>${totalOrdered}</td>
                     <td>${totalReceived}</td>
                     <td>${formattedReceivedDate}</td>
-                    <td>${formatCurrency(order.total_dibayarkan)}</td>
+                    <td>${formatCurrency(order.total_dibayaran)}</td>
                     <td>${formattedPaymentDate}</td>
                     <td>${order.alat_pembayaran || '-'}</td>
                     <td><button class="btn btn-sm btn-outline-primary detail-btn" data-order-id="${order.id}">Detail</button></td>
@@ -1477,6 +1515,280 @@ async function showOrderDetails(orderId) {
     }
 }
 
+// FILTER FUNCTIONS
+// Global filter state
+const activeFilters = {
+    type: null,
+    date: { start: null, end: null },
+    supplier: null,
+    payment: null,
+    location: null
+};
+
+// Initialize filters
+function initializeHistoryFilters() {
+    // Handle filter type selection (with uncheck capability)
+    document.querySelectorAll('input[name="filterGroup"]').forEach(radio => {
+        radio.addEventListener('click', function(e) {
+            if (this.checked && activeFilters.type === this.value) {
+                // Clicking the already selected radio should uncheck it
+                this.checked = false;
+                resetFilters();
+                return;
+            }
+            activeFilters.type = this.value;
+            
+            // Auto-expand the filter section
+            const filterCollapse = document.getElementById('filterCollapse');
+            const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
+            if (!collapseInstance || filterCollapse.classList.contains('collapsing')) {
+                new bootstrap.Collapse(filterCollapse, { toggle: true });
+            } else if (filterCollapse.classList.contains('collapse')) {
+                collapseInstance.show();
+            }
+            
+            updateFilterUI();
+        });
+    });
+
+    // Apply filter button
+    document.getElementById('applyFilter')?.addEventListener('click', applyHistoryFilters);
+
+    // Reset filter button
+    document.getElementById('resetFilter')?.addEventListener('click', resetFilters);
+
+    // Date inputs
+    document.getElementById('startDate')?.addEventListener('change', function() {
+        activeFilters.date.start = this.value;
+    });
+    document.getElementById('endDate')?.addEventListener('change', function() {
+        activeFilters.date.end = this.value;
+    });
+
+    // Supplier select
+    document.getElementById('supplierSelect')?.addEventListener('change', function() {
+        activeFilters.supplier = this.value;
+    });
+
+    // Payment select
+    document.getElementById('paymentSelect')?.addEventListener('change', function() {
+        activeFilters.payment = this.value;
+    });
+
+    // Location select
+    document.getElementById('locationSelect')?.addEventListener('change', function() {
+        activeFilters.location = this.value;
+    });
+
+    // Load initial data for dropdowns
+    loadSuppliersForFilter();
+    loadPaymentMethodsForFilter();
+    loadLocationsForFilter();
+}
+
+// Update filter UI based on selected type
+function updateFilterUI() {
+    // Hide all filter sections first
+    document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
+        section.classList.add('d-none');
+    });
+
+    // Show the selected filter section
+    switch(activeFilters.type) {
+        case 'date':
+            document.getElementById('dateFilter').classList.remove('d-none');
+            break;
+        case 'supplier':
+            document.getElementById('supplierFilter').classList.remove('d-none');
+            break;
+        case 'payment':
+            document.getElementById('paymentFilter').classList.remove('d-none');
+            break;
+        case 'location':
+            document.getElementById('locationFilter').classList.remove('d-none');
+            break;
+    }
+
+    // Show filter card if not already visible
+    document.getElementById('filterCard').classList.remove('d-none');
+}
+
+// Load suppliers for filter
+async function loadSuppliersForFilter() {
+    try {
+        const { data, error } = await supabase
+            .from('supplier')
+            .select('id, perusahaan')
+            .order('perusahaan', { ascending: true });
+
+        if (error) throw error;
+        
+        const select = document.getElementById('supplierSelect');
+        select.innerHTML = '<option value="">Semua Supplier</option>';
+        
+        data.forEach(supplier => {
+            const option = document.createElement('option');
+            option.value = supplier.id;
+            option.textContent = supplier.perusahaan;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading suppliers:', error);
+        showToast('Gagal memuat daftar supplier', 'error');
+    }
+}
+
+// Load payment methods for filter
+async function loadPaymentMethodsForFilter() {
+    try {
+        // Get payment methods from enum
+        const paymentMethods = await getPaymentMethodsEnum();
+        
+        const select = document.getElementById('paymentSelect');
+        select.innerHTML = '<option value="">Semua Metode</option>';
+        
+        paymentMethods.forEach(method => {
+            const option = document.createElement('option');
+            option.value = method.value;
+            
+            // Format the display text (capitalize first letter)
+            const displayText = method.value.charAt(0).toUpperCase() + method.value.slice(1);
+            option.textContent = displayText;
+            
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading payment methods:', error);
+        showToast('Gagal memuat metode pembayaran', 'error');
+        
+        // Fallback UI update
+        const select = document.getElementById('paymentSelect');
+        select.innerHTML = `
+            <option value="">Semua Metode</option>
+            <option value="tunai">Tunai</option>
+            <option value="transfer">Transfer</option>
+        `;
+    }
+}
+
+// Load locations for filter
+async function loadLocationsForFilter() {
+    try {
+        // Get locations from enum
+        const locations = await getLocationEnum();
+        
+        const select = document.getElementById('locationSelect');
+        select.innerHTML = '<option value="">Semua Lokasi</option>';
+        
+        locations.forEach(location => {
+            const option = document.createElement('option');
+            option.value = location.value;
+            
+            // Format the display text (capitalize first letter)
+            const displayText = location.value.charAt(0).toUpperCase() + location.value.slice(1);
+            option.textContent = displayText;
+            
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading locations:', error);
+        showToast('Gagal memuat daftar lokasi', 'error');
+        
+        // Fallback UI update
+        const select = document.getElementById('locationSelect');
+        select.innerHTML = `
+            <option value="">Semua Lokasi</option>
+            <option value="gudang">Gudang</option>
+            <option value="toko">Toko</option>
+        `;
+    }
+}
+
+// Apply selected filters
+function applyHistoryFilters() {
+    // Get current filter values based on active type
+    switch(activeFilters.type) {
+        case 'date':
+            activeFilters.date.start = document.getElementById('startDate').value;
+            activeFilters.date.end = document.getElementById('endDate').value;
+            break;
+        case 'supplier':
+            activeFilters.supplier = document.getElementById('supplierSelect').value;
+            break;
+        case 'payment':
+            activeFilters.payment = document.getElementById('paymentSelect').value;
+            break;
+        case 'location':
+            activeFilters.location = document.getElementById('locationSelect').value;
+            break;
+    }
+
+    // Apply filters to the history data
+    filterHistory();
+}
+
+// Filter history data based on active filters
+async function filterHistory() {
+    try {
+        // Get filter values from activeFilters
+        const startDate = activeFilters.type === 'date' ? activeFilters.date.start : null;
+        const endDate = activeFilters.type === 'date' ? activeFilters.date.end : null;
+        const supplierFilter = activeFilters.type === 'supplier' ? activeFilters.supplier : null;
+        const paymentFilter = activeFilters.type === 'payment' ? activeFilters.payment : null;
+        const locationFilter = activeFilters.type === 'location' ? activeFilters.location : null;
+
+        // Call your existing render function with filters
+        await renderHistoryTable(
+            startDate,
+            endDate,
+            supplierFilter,
+            paymentFilter,
+            locationFilter
+        );
+
+    } catch (error) {
+        console.error('Error filtering history:', error);
+        showToast('Gagal memfilter riwayat', 'error');
+    }
+}
+
+// Reset all filters
+function resetFilters() {
+    // Uncheck all radio buttons
+    document.querySelectorAll('input[name="filterGroup"]').forEach(radio => {
+        radio.checked = false;
+    });
+
+    // Reset active filters
+    activeFilters.type = null;
+    activeFilters.date = { start: null, end: null };
+    activeFilters.supplier = null;
+    activeFilters.payment = null;
+    activeFilters.location = null;
+
+    // Reset form inputs
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    document.getElementById('supplierSelect').value = '';
+    document.getElementById('paymentSelect').value = '';
+    document.getElementById('locationSelect').value = '';
+
+    // Hide all filter sections
+    document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
+        section.classList.add('d-none');
+    });
+
+    // Collapse the filter section
+    const filterCollapse = document.getElementById('filterCollapse');
+    const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
+    if (collapseInstance && !filterCollapse.classList.contains('collapse')) {
+        collapseInstance.hide();
+    }
+
+    // Refresh the history list without filters
+    renderHistoryTable();
+}
+
 // page init
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize variables
@@ -1523,6 +1835,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target.closest('.complete-order')) {
             const button = e.target.closest('.complete-order');
             const orderId = button.dataset.orderId;
+            const date = button.dataset.receivedDate;
             const itemsData = JSON.parse(button.dataset.items || '[]');
             
             try {
@@ -1535,7 +1848,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         type: 'pembelian',
                         id: orderId,
                         quantity: item.receivedQty,
-                        price: item.price
+                        price: item.price,
+                        date: date
                     });
                     
                     // Process broken items if any
@@ -1568,17 +1882,32 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Non-async DOM functions
     function initPage() {
         renderOngoingOrders();
+        initializeHistoryFilters(); // Changed from setupHistoryFilters to initializeHistoryFilters
         
         if (addDataBtn) {
             addDataBtn.addEventListener('click', () => openOrderModal('add'));
         }
         
         if (ongoingTab) ongoingTab.addEventListener('click', renderOngoingOrders);
-        if (historyTab) historyTab.addEventListener('click', renderHistoryTable);
+        if (historyTab) historyTab.addEventListener('click', () => {
+            // Reset filters and render history when tab is clicked
+            resetFilters();
+            renderHistoryTable();
+        });
     }
+
+    // Add event listener for filter apply button
+    document.getElementById('applyFilter')?.addEventListener('click', async () => {
+        await filterHistory();
+    });
+
+    // Add event listener for filter reset button
+    document.getElementById('resetFilter')?.addEventListener('click', async () => {
+        resetFilters();
+        await renderHistoryTable();
+    });
 });
 
 const modal = document.getElementById('orderModal');

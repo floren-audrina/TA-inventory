@@ -11,3 +11,17 @@ document.addEventListener('click', (event) => {
         sidebar.classList.remove('active'); // Close sidebar
     }
 });
+
+const logoutLink = document.querySelector('#sidebar a[href="login.html"]');
+if (logoutLink) {
+    logoutLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+            await logout();
+        } catch (error) {
+            console.error('Logout failed:', error);
+            // Optional: Show error to user
+            window.location.href = 'login.html'; // Force redirect anyway
+        }
+    });
+}

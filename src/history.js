@@ -1,5 +1,28 @@
 import supabase from './db_conn.js';
 import { processEntry } from './import.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+    
+    // Rest of your page-specific code
+    initPageSpecificFunctions();
+})();
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Jakarta' // Ensure it's always in WIB
+    });
+}
 
 function showToast(message, type = 'success') {
     const toastContainer = document.getElementById('toastContainer');
@@ -67,7 +90,6 @@ async function fetchVariantDetails(variantId) {
 }
 
 // Function to load enum values for "tipe_riwayat"
-// Function to load enum values for "tipe_riwayat" but only show adjustment types
 async function loadTipeRiwayatEnum() {
     const tipeRiwayatSelect = document.getElementById('tipe_riwayat');
 
@@ -350,7 +372,7 @@ async function fetchStockHistory(variantId) {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${history.id}</td>
-                <td>${new Date(history.tanggal).toLocaleString('id-ID')}</td>
+                <td>${formatDate(history.tanggal)}</td>
                 <td>${history.tipe_riwayat.charAt(0).toUpperCase() + history.tipe_riwayat.slice(1)}</td>
                 <td>${history.qty}</td>
                 <td>${history.saldo ?? '-'}</td>
@@ -547,7 +569,7 @@ function updateHistoryTable(entries) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${entry.id}</td>
-            <td>${new Date(entry.tanggal).toLocaleString('id-ID')}</td>
+            <td>${formatDate(history.tanggal)}</td>
             <td>${entry.tipe_riwayat.charAt(0).toUpperCase() + entry.tipe_riwayat.slice(1)}</td>
             <td>${entry.qty}</td>
             <td>${entry.saldo ?? '-'}</td>

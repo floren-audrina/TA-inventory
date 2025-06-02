@@ -1,5 +1,11 @@
 import supabase from './db_conn.js';
 import Chart from 'chart.js/auto';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 // others
 function showToast(message, type = 'success') {
@@ -20,6 +26,31 @@ function showToast(message, type = 'success') {
     bsToast.show();
     
     toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+
+function formatIndonesianDateTime(timestamptz) {
+    if (!timestamptz) return '-'; // Handle null/undefined cases
+    
+    const date = new Date(timestamptz);
+    
+    // Return early if invalid date
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    
+    // Format options for Indonesian locale
+    const options = {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Jakarta' // Explicitly set to Indonesia's timezone
+    };
+    
+    // Format the date
+    return date.toLocaleString('id-ID', options)
+        .replace(/\./g, ':')     // Replace periods with colons in time
+        .replace(/,/g, ' ');     // Remove comma between date and time
 }
 
 function setupEventListeners() {
@@ -137,40 +168,17 @@ async function loadTabContent(tabId) {
     }
 }
 
-// OVERVIEW
+// overview
 async function loadOverviewInsights(startDate, endDate) {
     const overviewContent = document.getElementById('overview-content');
     
-    // Show loading state
-    overviewContent.innerHTML = `
-        <div class="empty-state">
-            <i class="fas fa-spinner fa-spin"></i>
-            <p>Loading overview insights...</p>
-        </div>
-    `;
-    
     try {
-        // Create the overview content structure
-        overviewContent.innerHTML = `
-            <div class="row mb-4">
-                <div class="col-md-3 mb-3 mb-md-0">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-subtitle mb-2 text-muted">Total Pendapatan</h6>
-                            <h3 class="card-title" id="revenue-metric"><i class="fas fa-spinner fa-spin"></i></h3>
-                            <p class="card-text text-success mb-0" id="revenue-change"></p>
-                        </div>
-                    </div>
-                </div>
-                <!-- Add more metric cards here if needed -->
-            </div>
-            <!-- Add other overview content sections here -->
-        `;
-        
-        // Load the revenue metric
+        // Load all metrics and charts
         await updateRevenueMetric(startDate, endDate);
-        
-        // Load other overview insights here...
+        await updateSalesCount(startDate, endDate);
+        await updatePurchaseCount(startDate, endDate);
+        await loadCategoryDemandInsights(startDate, endDate);
+        await loadSalesPurchasesTrends(startDate, endDate);
         
     } catch (error) {
         console.error('Error loading overview insights:', error);
@@ -184,7 +192,6 @@ async function loadOverviewInsights(startDate, endDate) {
 
 async function updateRevenueMetric(startDate, endDate) {
     try {
-        // Fetch revenue data from Supabase
         const { data: revenueData, error } = await supabase
             .from('pesanan_penjualan')
             .select('total_dibayarkan, tanggal_pesan')
@@ -193,23 +200,407 @@ async function updateRevenueMetric(startDate, endDate) {
         
         if (error) throw error;
         
-        // Calculate total revenue
         const totalRevenue = revenueData.reduce((sum, order) => sum + (order.total_dibayarkan || 0), 0);
-        
-        // Format as currency (IDR)
-        const formatter = new Intl.NumberFormat('id-ID', {
-            style: 'currency',
-            currency: 'IDR',
-            minimumFractionDigits: 0
-        });
-        
-        // Update UI
-        document.getElementById('revenue-metric').textContent = formatter.format(totalRevenue);
+        document.getElementById('revenue-metric').textContent = formatCurrency(totalRevenue);
         
     } catch (error) {
         console.error('Error fetching revenue data:', error);
         document.getElementById('revenue-metric').textContent = 'Error';
     }
+}
+
+async function updateSalesCount(startDate, endDate) {
+    try {
+        const { count, error } = await supabase
+            .from('pesanan_penjualan')
+            .select('id', { count: 'exact', head: true })
+            .gte('tanggal_pesan', startDate)
+            .lte('tanggal_pesan', endDate);
+        
+        if (error) throw error;
+        document.getElementById('sales-count').textContent = count ?? '0';
+    } catch (error) {
+        console.error('Error fetching sales count:', error);
+        document.getElementById('sales-count').textContent = 'Error';
+    }
+}
+
+async function updatePurchaseCount(startDate, endDate) {
+    try {
+        const { count, error } = await supabase
+            .from('pesanan_pembelian')
+            .select('id', { count: 'exact', head: true })
+            .gte('tanggal_pesan', startDate)
+            .lte('tanggal_pesan', endDate);
+        
+        if (error) throw error;
+        document.getElementById('purchase-count').textContent = count ?? '0';
+    } catch (error) {
+        console.error('Error fetching purchase count:', error);
+        document.getElementById('purchase-count').textContent = 'Error';
+    }
+}
+
+async function loadCategoryDemandInsights(startDate, endDate) {
+    try {
+        const { data, error } = await supabase
+            .from('item_pesanan_penjualan')
+            .select(`
+                qty_dipesan,
+                harga_jual,
+                produk_varian:id_varian (
+                    produk:id_produk (
+                        nama,
+                        subkategori:id_subkategori (
+                            subkategori,
+                            kategori:id_kategori (kategori)
+                        )
+                    )
+                ),
+                pesanan_penjualan:id_jual (
+                    tanggal_pesan
+                )
+            `)
+            .gte('pesanan_penjualan.tanggal_pesan', startDate)
+            .lte('pesanan_penjualan.tanggal_pesan', endDate);
+        
+        if (error) throw error;
+
+        const categoryData = {};
+        
+        data.forEach(item => {
+            const category = item.produk_varian?.produk?.subkategori?.kategori?.kategori || 'Uncategorized';
+            const subcategory = item.produk_varian?.produk?.subkategori?.subkategori || 'No Subcategory';
+            const categoryLabel = `${category} - ${subcategory}`;
+            const revenue = (item.qty_dipesan * item.harga_jual) || 0;
+            const quantity = item.qty_dipesan || 0;
+            
+            if (!categoryData[categoryLabel]) {
+                categoryData[categoryLabel] = {
+                    category: category,
+                    subcategory: subcategory,
+                    revenue: 0,
+                    quantity: 0
+                };
+            }
+            
+            categoryData[categoryLabel].revenue += revenue;
+            categoryData[categoryLabel].quantity += quantity;
+        });
+
+        const totalRevenue = Object.values(categoryData).reduce((sum, cat) => sum + cat.revenue, 0);
+        const sortedCategories = Object.keys(categoryData).sort((a, b) => {
+            return categoryData[b].revenue - categoryData[a].revenue;
+        });
+
+        renderCategoryDemandChart(sortedCategories, sortedCategories.map(cat => categoryData[cat].revenue));
+        renderCategoryDemandTable(sortedCategories, categoryData, totalRevenue);
+        
+    } catch (error) {
+        console.error('Error loading category demand insights:', error);
+        document.getElementById('category-chart-container').innerHTML = `
+            <div class="alert alert-danger">
+                Failed to load category demand data: ${error.message}
+            </div>
+        `;
+    }
+}
+
+function renderCategoryDemandChart(categories, revenueData) {
+    const ctx = document.getElementById('category-demand-chart').getContext('2d');
+    
+    if (window.categoryDemandChart) {
+        window.categoryDemandChart.destroy();
+    }
+    
+    window.categoryDemandChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: categories,
+            datasets: [{
+                data: revenueData,
+                backgroundColor: [
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+                    '#9966FF', '#FF9F40', '#8AC24A', '#607D8B',
+                    '#E91E63', '#9C27B0'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.raw || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = Math.round((value / total) * 100);
+                            return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderCategoryDemandTable(categories, categoryData, totalRevenue) {
+    const tableBody = document.getElementById('category-demand-data');
+    tableBody.innerHTML = '';
+    
+    categories.forEach((categoryLabel) => {
+        const categoryInfo = categoryData[categoryLabel];
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <strong>${categoryInfo.category}</strong><br>
+                <small class="text-muted">${categoryInfo.subcategory}</small>
+            </td>
+            <td>${formatCurrency(categoryInfo.revenue)}</td>
+            <td>${categoryInfo.quantity}</td>
+            <td>${(categoryInfo.revenue / totalRevenue * 100).toFixed(1)}%</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+    }).format(value);
+}
+
+async function loadSalesPurchasesTrends(startDate, endDate) {
+    try {
+        // Fetch both sales and purchases data in parallel
+        const [salesData, purchasesData] = await Promise.all([
+            fetchSalesData(startDate, endDate),
+            fetchPurchasesData(startDate, endDate)
+        ]);
+
+        // Process data into daily trends
+        const salesTrend = processDailyTrends(salesData, 'Sales');
+        const purchasesTrend = processDailyTrends(purchasesData, 'Purchases');
+
+        // Render the chart
+        renderTrendChart(salesTrend, purchasesTrend, startDate, endDate);
+
+    } catch (error) {
+        console.error('Error loading trends data:', error);
+        document.getElementById('sales-purchases-trend-chart').closest('.card-body').innerHTML = `
+            <div class="alert alert-danger">
+                Failed to load trends data: ${error.message}
+            </div>
+        `;
+    }
+}
+
+async function fetchSalesData(startDate, endDate) {
+    const { data, error } = await supabase
+        .from('pesanan_penjualan')
+        .select(`
+            id, 
+            tanggal_pesan, 
+            items:item_pesanan_penjualan(qty_dipesan)
+        `)
+        .gte('tanggal_pesan', startDate)
+        .lte('tanggal_pesan', endDate)
+        .order('tanggal_pesan', { ascending: true });
+
+    if (error) throw error;
+    return data;
+}
+
+async function fetchPurchasesData(startDate, endDate) {
+    const { data, error } = await supabase
+        .from('pesanan_pembelian')
+        .select(`
+            id, 
+            tanggal_pesan, 
+            items:item_pesanan_pembelian(qty_dipesan)
+        `)
+        .gte('tanggal_pesan', startDate)
+        .lte('tanggal_pesan', endDate)
+        .order('tanggal_pesan', { ascending: true });
+
+    if (error) throw error;
+    return data;
+}
+
+function processDailyTrends(data, type) {
+    const dailyData = {};
+    
+    data.forEach(transaction => {
+        const date = transaction.tanggal_pesan;
+        if (!dailyData[date]) {
+            dailyData[date] = {
+                date: date,
+                count: 0,
+                quantity: 0
+            };
+        }
+        
+        dailyData[date].count++;
+        
+        // Sum quantities if available
+        if (transaction.items) {
+            transaction.items.forEach(item => {
+                dailyData[date].quantity += item.qty_dipesan || 0;
+            });
+        }
+    });
+
+    return {
+        type: type,
+        dates: Object.keys(dailyData),
+        counts: Object.values(dailyData).map(d => d.count),
+        quantities: Object.values(dailyData).map(d => d.quantity)
+    };
+}
+
+function renderTrendChart(salesTrend, purchasesTrend, startDate, endDate) {
+    const ctx = document.getElementById('sales-purchases-trend-chart').getContext('2d');
+    
+    // Destroy previous chart if exists
+    if (window.trendChart) {
+        window.trendChart.destroy();
+    }
+    
+    // Generate all dates in range for complete x-axis
+    const allDates = generateDateRange(startDate, endDate);
+    
+    window.trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: allDates,
+            datasets: [
+                {
+                    label: 'Sales (Transactions)',
+                    data: mapDataToAllDates(salesTrend.dates, salesTrend.counts, allDates),
+                    borderColor: '#4e73df',
+                    backgroundColor: 'rgba(78, 115, 223, 0.05)',
+                    tension: 0.3,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Purchases (Transactions)',
+                    data: mapDataToAllDates(purchasesTrend.dates, purchasesTrend.counts, allDates),
+                    borderColor: '#1cc88a',
+                    backgroundColor: 'rgba(28, 200, 138, 0.05)',
+                    tension: 0.3,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Sales (Quantity)',
+                    data: mapDataToAllDates(salesTrend.dates, salesTrend.quantities, allDates),
+                    borderColor: '#36b9cc',
+                    backgroundColor: 'rgba(54, 185, 204, 0.05)',
+                    tension: 0.3,
+                    yAxisID: 'y1',
+                    hidden: true // Hide by default
+                },
+                {
+                    label: 'Purchases (Quantity)',
+                    data: mapDataToAllDates(purchasesTrend.dates, purchasesTrend.quantities, allDates),
+                    borderColor: '#f6c23e',
+                    backgroundColor: 'rgba(246, 194, 62, 0.05)',
+                    tension: 0.3,
+                    yAxisID: 'y1',
+                    hidden: true // Hide by default
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Date'
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Number of Transactions'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Quantity'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.raw}`;
+                        }
+                    }
+                },
+                legend: {
+                    onClick: function(e, legendItem, legend) {
+                        const index = legendItem.datasetIndex;
+                        const chart = legend.chart;
+                        const meta = chart.getDatasetMeta(index);
+
+                        // Toggle visibility
+                        meta.hidden = !meta.hidden;
+
+                        // Update chart
+                        chart.update();
+                    }
+                }
+            }
+        }
+    });
+}
+
+function generateDateRange(startDate, endDate) {
+    const dates = [];
+    let currentDate = new Date(startDate);
+    const end = new Date(endDate);
+    
+    while (currentDate <= end) {
+        dates.push(currentDate.toISOString().split('T')[0]);
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return dates;
+}
+
+function mapDataToAllDates(sourceDates, sourceValues, allDates) {
+    const dateMap = {};
+    sourceDates.forEach((date, index) => {
+        dateMap[date] = sourceValues[index];
+    });
+    
+    return allDates.map(date => dateMap[date] || 0);
 }
 
 // CONTACT
@@ -227,31 +618,34 @@ async function loadContactTabInsights(startDate, endDate) {
 }
 
 async function loadSupplierInsights(startDate, endDate) {
-    // 1. Average items per supplier
-    const { data: avgItemsData, error: avgItemsError } = await supabase
-        .from('pesanan_pembelian')
+    // 1. Average number of product variants per supplier (DIRECT QUERY)
+    const { data: supplierVariantsData, error: supplierVariantsError } = await supabase
+        .from('produk_varian')
         .select(`
-            id_supplier,
-            items:item_pesanan_pembelian(
-                qty_dipesan
+            id,
+            varian,
+            produk: id_produk(
+                id_supplier
             )
-        `)
-        .gte('tanggal_pesan', startDate)
-        .lte('tanggal_pesan', endDate);
+        `);
 
-    if (!avgItemsError) {
-        const supplierItemCounts = {};
-        avgItemsData.forEach(order => {
-            if (!supplierItemCounts[order.id_supplier]) {
-                supplierItemCounts[order.id_supplier] = 0;
+    if (!supplierVariantsError) {
+        const variantsPerSupplier = {};
+
+        supplierVariantsData.forEach(variant => {
+            const supplierId = variant.produk.id_supplier;
+            
+            if (!variantsPerSupplier[supplierId]) {
+                variantsPerSupplier[supplierId] = new Set(); // Track unique variant IDs per supplier
             }
-            order.items.forEach(item => {
-                supplierItemCounts[order.id_supplier] += item.qty_dipesan;
-            });
+            variantsPerSupplier[supplierId].add(variant.id); // Add variant ID to the supplier's Set
         });
 
-        const avgItems = Object.values(supplierItemCounts).reduce((a, b) => a + b, 0) / Object.keys(supplierItemCounts).length;
-        document.getElementById('avg-items-supplier').textContent = avgItems.toFixed(1);
+        // Calculate average variants per supplier
+        const counts = Object.values(variantsPerSupplier).map(set => set.size);
+        const avgVariantsPerSupplier = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+
+        document.getElementById('avg-items-supplier').textContent = avgVariantsPerSupplier;
     }
 
     // 2. Lead time (from ordered to received)
@@ -526,7 +920,7 @@ async function loadLogInsights(startDate, endDate) {
             logContent.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-spinner fa-spin"></i>
-                    <p>Loading stock opname insights...</p>
+                    <p>Memuat insights untuk stock opname...</p>
                 </div>
             `;
         }
@@ -539,7 +933,7 @@ async function loadLogInsights(startDate, endDate) {
         document.getElementById('total-audits').textContent = logData.totalLogs;
         document.getElementById('final-audits').textContent = logData.finalLogs;
         document.getElementById('draft-audits').textContent = logData.draftLogs;
-        document.getElementById('avg-items-audit').textContent = logData.avgItemsPerLog;
+        document.getElementById('avg-items-audit').textContent = Math.round(logData.avgItemsPerLog);
         document.getElementById('total-items-audited').textContent = logData.totalItems;
         
         // Mismatch Rate
@@ -568,7 +962,7 @@ async function loadLogInsights(startDate, endDate) {
                 <td>${item.lastAudit}</td>
             </tr>
         `).join('');
-        
+
         // Recent Adjustments
         const recentAdjTable = document.getElementById('recent-adjustments');
         recentAdjTable.innerHTML = logData.recentAdjustments.map(item => `
@@ -579,13 +973,14 @@ async function loadLogInsights(startDate, endDate) {
                 <td>${item.qty}</td>
             </tr>
         `).join('');
+        console.log("logdata", logData);
         
     } catch (error) {
         console.error('Error loading log insights:', error);
-        showToast('Failed to load stock opname data', 'error');
+        showToast('Gagal memuat data stock opname', 'error');
         logContent.innerHTML = `
             <div class="alert alert-danger">
-                Failed to load stock opname data: ${error.message}
+                Gagal memuat data stock opname: ${error.message}
             </div>
         `;
     }
@@ -600,102 +995,111 @@ async function fetchLogData(startDate, endDate) {
             id,
             status_log,
             waktu_dibuat,
+            tanggal,
             items:item_opname(
                 id,
                 stok,
                 status_item_log,
-                produk_varian: id_varian(varian, produk: id_produk(nama))
+                produk_varian: id_varian(id, varian, produk: id_produk(nama, id))
             )
         `)
         .gte('waktu_dibuat', startDate)
-        .lte('waktu_dibuat', endDate);
-    
-    console.log(logs);    
+        .lte('waktu_dibuat', endDate)
+        .order('tanggal', { ascending: false });
+
     if (logsError) throw logsError;
-    
+
     // 2. Get all products for comparison
     const { data: allProducts, error: productsError } = await supabase
         .from('produk_varian')
-        .select('id, varian, produk: id_produk(nama)');
-    
+        .select('id, varian, produk: id_produk(nama, id)');
+
     if (productsError) throw productsError;
-    
-    // Calculate metrics
+
     const totalLogs = logs.length;
-    console.log(totalLogs);
     const finalLogs = logs.filter(log => log.status_log === 'final').length;
     const draftLogs = logs.filter(log => log.status_log === 'draft').length;
-    
+
     const totalItems = logs.reduce((sum, log) => sum + (log.items?.length || 0), 0);
     const avgItemsPerLog = totalLogs > 0 ? (totalItems / totalLogs).toFixed(1) : 0;
-    
+
     let totalItemsChecked = 0;
     let mismatchedItems = 0;
     let unadjustedMismatches = 0;
-    const adjustmentVolumes = [];
     const itemsInLogs = new Set();
     const unadjustedItems = [];
-    const highestAdjustments = [];
     const recentAdjustments = [];
-    
+
     logs.forEach(log => {
         log.items?.forEach(item => {
             totalItemsChecked++;
-            itemsInLogs.add(item.produk_varian.id);
-            
+
+            if (item.produk_varian?.produk?.id && item.produk_varian?.id) {
+                itemsInLogs.add(`${item.produk_varian.produk.id}_${item.produk_varian.id}`);
+            }
+
             if (item.status_item_log === 'disesuaikan' || item.status_item_log === 'tidak_sesuai') {
                 mismatchedItems++;
-                
-                // For highest adjustments
-                // highestAdjustments.push({
-                //     product: `${item.produk_varian.produk.nama} (${item.produk_varian.varian})`,
-                //     qty: item.stok,
-                //     logId: log.id
-                // });
-                
-                // For recent adjustments
+
                 if (item.status_item_log === 'disesuaikan') {
                     recentAdjustments.push({
-                        date: new Date(log.created_at).toLocaleDateString(),
+                        date: formatIndonesianDateTime(log.tanggal),
                         logId: log.id,
                         product: `${item.produk_varian.produk.nama} (${item.produk_varian.varian})`,
                         qty: item.stok
                     });
                 }
-            }
-            
-            if (item.status_item_log === 'tidak_sesuai') {
-                unadjustedMismatches++;
-                unadjustedItems.push({
-                    product: item.produk_varian.produk.nama,
-                    variant: item.produk_varian.varian,
-                    qty: item.stok
-                });
+
+                if (item.status_item_log === 'tidak_sesuai') {
+                    unadjustedMismatches++;
+                    unadjustedItems.push({
+                        product: item.produk_varian.produk.nama,
+                        variant: item.produk_varian.varian,
+                        qty: item.stok
+                    });
+                }
             }
         });
     });
-    
-    const mismatchRate = totalItemsChecked > 0 
-        ? ((mismatchedItems / totalItemsChecked) * 100).toFixed(1) + '%' 
-        : '0%';
-    
-    const itemsNotInLogs = allProducts.filter(product => 
-        !itemsInLogs.has(product.id))
-        .map(product => ({
+
+    // 3. Handle unaudited products and fetch their latest audit date (outside range)
+    const itemsNotInLogs = [];
+
+    for (const product of allProducts) {
+        const produkId = product.produk?.id;
+        const variantId = product.id;
+
+        if (!produkId || !variantId) continue;
+
+        const key = `${produkId}_${variantId}`;
+        if (itemsInLogs.has(key)) continue;
+
+        // Query the most recent log item regardless of date range
+        const { data: lastLog, error: lastLogError } = await supabase
+            .from('item_opname')
+            .select('id_log, id_varian, log_opname!inner(tanggal)')
+            .eq('id_varian', variantId)
+            .order('tanggal', { 
+                foreignTable: 'log_opname', 
+                ascending: false 
+            })
+            .limit(1);
+
+        if (lastLogError) throw lastLogError;
+
+        const lastAuditDate = lastLog && lastLog.length > 0 ? lastLog[0].tanggal : null;
+
+        itemsNotInLogs.push({
             name: product.produk.nama,
             variant: product.varian,
-            lastAudit: 'Never'
-        }));
-    
-    // const highestAdjustment = adjustmentVolumes.length > 0
-    //     ? Math.max(...adjustmentVolumes)
-    //     : 0;
-    
-    // Sort and limit highest adjustments
-    // const topAdjustments = highestAdjustments
-    //     .sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference))
-    //     .slice(0, 5);
-    
+            lastAudit: lastAuditDate ? formatIndonesianDateTime(lastAuditDate) : 'Tidak pernah diperiksa'
+        });
+    }
+
+    const mismatchRate = totalItemsChecked > 0
+        ? ((mismatchedItems / totalItemsChecked) * 100).toFixed(1) + '%'
+        : '0%';
+
     return {
         totalLogs,
         finalLogs,
@@ -711,6 +1115,7 @@ async function fetchLogData(startDate, endDate) {
         recentAdjustments: recentAdjustments.slice(0, 10)
     };
 }
+
 
 // PRRODUK/STOK
 async function loadInventoryInsights(startDate, endDate) {

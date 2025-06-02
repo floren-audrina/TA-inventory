@@ -1,5 +1,11 @@
 import supabase from './db_conn.js';
-import { processEntry, updateVariantStock } from './import.js';
+import { processEntry } from './import.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 // ========== Global Variables ==========
 let saleModal;
@@ -28,6 +34,15 @@ function formatDate(dateStr) {
     });
 }
 
+function toLocalInputDateTime(dateStr) {
+    if (!dateStr) return '';
+
+    const date = new Date(dateStr);
+    const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000); // Adjust for timezone offset
+    return offsetDate.toISOString().slice(0, 16); // This returns the local date-time in correct format
+}
+
+
 function formatCurrency(amount) {
     return new Intl.NumberFormat('id-ID', {
         style: 'currency',
@@ -54,6 +69,32 @@ function showToast(message, type = 'success') {
     bsToast.show();
     
     toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+
+function showStockError(variantId, message) {
+    const row = document.querySelector(`tr[data-variant-id="${variantId}"]`);
+    if (!row) return;
+    
+    // Add error styling
+    row.classList.add('table-danger');
+    
+    // Create error message element
+    let errorEl = row.querySelector('.stock-error');
+    if (!errorEl) {
+        errorEl = document.createElement('div');
+        errorEl.className = 'stock-error text-danger small mt-1';
+        row.querySelector('td:last-child').appendChild(errorEl);
+    }
+    errorEl.textContent = message;
+}
+
+function clearStockError(variantId) {
+    const row = document.querySelector(`tr[data-variant-id="${variantId}"]`);
+    if (!row) return;
+    
+    row.classList.remove('table-danger');
+    const errorEl = row.querySelector('.stock-error');
+    if (errorEl) errorEl.remove();
 }
 
 // ========== Data Fetching Functions ==========
@@ -196,10 +237,8 @@ async function populateSaleForm(saleId) {
         modal.dataset.currentStatus = sale.status_pesanan;
 
         // Populate basic fields
-        document.getElementById('saleDate').value = sale.tanggal_pesan ? 
-            new Date(sale.tanggal_pesan).toISOString().slice(0, 16) : '';
-        document.getElementById('needDate').value = sale.tanggal_dibutuhkan ? 
-            new Date(sale.tanggal_dibutuhkan).toISOString().slice(0, 16) : '';
+        document.getElementById('saleDate').value = toLocalInputDateTime(sale.tanggal_pesan);
+        document.getElementById('needDate').value = toLocalInputDateTime(sale.tanggal_dibutuhkan);
         document.getElementById('customer').value = sale.id_bakul;
         
         // Clear and prepare form
@@ -248,7 +287,7 @@ function setupModalEvents() {
         }
     });
 
-    // Add supplier change listener
+    // change bakul
     document.getElementById('customer').addEventListener('change', async function() {
         // Clear existing product rows
         // document.querySelector('#productsTable tbody').innerHTML = '';
@@ -256,9 +295,7 @@ function setupModalEvents() {
         // If we're in edit mode, don't auto-add products
         const mode = document.getElementById('saleModal').dataset.mode;
         if (mode === 'edit') return;
-        
-        // Add a new empty product row for the new supplier
-        // await addProductRow();
+
     });
 
     // remove item order
@@ -498,7 +535,7 @@ async function addStatusSpecificFields(sale) {
                     <label class="form-label">Tanggal Diambil</label>
                     <input type="datetime-local" class="form-control" id="tanggalAmbil" 
                         value="${sale.tanggal_diambil ? 
-                            new Date(sale.tanggal_diambil).toISOString().slice(0, 16) : ''}">
+                            toLocalInputDateTime(sale.tanggal_diambil) : ''}">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Pihak Pengambil</label>
@@ -525,7 +562,7 @@ async function addStatusSpecificFields(sale) {
                     <label class="form-label">Tanggal Pembayaran</label>
                     <input type="datetime-local" class="form-control" id="tanggalPembayaran" 
                         value="${sale.tanggal_dibayar ? 
-                            new Date(sale.tanggal_dibayar).toISOString().slice(0, 16) : ''}">
+                            toLocalInputDateTime(sale.tanggal_dibayar) : ''}">
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Total Dibayarkan</label>
@@ -586,7 +623,7 @@ async function getTakerList() {
         });
         
         if (error) {
-            console.error('Error loading locations:', error);
+            console.error('Error loading taker:', error);
             return [
                 { value: 'sendiri' },
                 { value: 'perwakilan' }
@@ -657,6 +694,7 @@ async function addItemRow(productId = null, variantId = null) {
         if (productsError) throw productsError;
 
         const row = document.createElement('tr');
+        if (variantId) row.dataset.variantId = variantId;
         row.innerHTML = `
             <td>
                 <select class="form-select product-select">
@@ -699,6 +737,7 @@ async function addItemRow(productId = null, variantId = null) {
         });
 
         variantSelect.addEventListener('change', function() {
+            row.dataset.variantId = this.value;
             const selectedOption = variantSelect.options[variantSelect.selectedIndex];
             const price = selectedOption.getAttribute('data-price') || 0;
             console.log("price: ", price)
@@ -727,6 +766,7 @@ async function addItemRow(productId = null, variantId = null) {
 function createItemRow(item, currentStatus) {
     const row = document.createElement('tr');
     row.dataset.itemId = item.id;
+    row.dataset.variantId = item.produk_varian.id;
 
     const disableRemove = ['diambil', 'dibayar', 'selesai'].includes(currentStatus);
     
@@ -885,63 +925,85 @@ async function saveSale() {
     try {
         if (mode === 'edit') {
             await updateSale();
+            saleModal.hide();
+            await renderOngoingSales();
         } else {
-            await createSale();
+            // For create, we need to check for stock errors first
+            const hasStockError = await createSale();
+            if (!hasStockError) {
+                saleModal.hide();
+                await renderOngoingSales();
+            }
         }
-      
-        saleModal.hide();
-        await renderOngoingSales();
     } catch (error) {
-      console.error('Save failed:', error);
-      showToast('Gagal menyimpan pesanan', 'error');
+        console.error('Save failed:', error);
+        showToast('Gagal menyimpan pesanan', 'error');
     }
 }
 
 async function createSale() {
     const formData = collectFormData();
-    console.log(formData);
-    
+    let hasStockError = false;
+    const errorMessages = [];
+
     try {
-        // reserve stock
+        // Reserve stock with error handling
         for (const item of formData.items) {
-            const { error } = await supabase.rpc('adjust_reserved_stock', {
-                p_variant_id: item.variantId,
-                p_adjustment: item.quantity
-            });
-            if (error) throw error;
+            try {
+                const { error } = await supabase.rpc('adjust_reserved_stock', {
+                    p_variant_id: item.variantId,
+                    p_adjustment: item.quantity
+                });
+                
+                if (error) throw error;
+                
+                // Clear any previous error if successful
+                clearStockError(item.variantId);
+            } catch (error) {
+                hasStockError = true;
+                errorMessages.push(error.message);
+                showStockError(item.variantId, error.message);
+            }
         }
-        
-        // 1. Create order header
-        const { data: newOrder, error } = await supabase
-            .from('pesanan_penjualan')
-            .insert({
-                tanggal_pesan: formData.orderDate,
-                tanggal_dibutuhkan: formData.needDate,
-                id_bakul: formData.bakulID,
-                status_pesanan: 'dipesan'
-            })
-            .select()
-            .single();
 
-        if (error) throw error;
-  
-        // 2. Add items with variant IDs
-        const { error: itemsError } = await supabase
-            .from('item_pesanan_penjualan')
-            .insert(formData.items.map(item => ({
-                id_jual: newOrder.id,
-                id_varian: item.variantId,
-                qty_dipesan: item.quantity,
-                harga_jual: item.price
-            })));
+        if (hasStockError) {
+            showToast('Beberapa stok tidak mencukupi. Periksa daftar produk.', 'error');
+            return true; // Return true to indicate there was a stock error
+        }
+        else {
+            // Proceed with order creation if no stock errors
+            const { data: newOrder, error } = await supabase
+                .from('pesanan_penjualan')
+                .insert({
+                    tanggal_pesan: formData.orderDate,
+                    tanggal_dibutuhkan: formData.needDate,
+                    id_bakul: formData.bakulID,
+                    status_pesanan: 'dipesan'
+                })
+                .select()
+                .single();
 
-        if (itemsError) throw itemsError;
-  
-        showToast('Pesanan baru berhasil dibuat', 'success');
-        await renderOngoingSales();
+            if (error) throw error;
+    
+            // Add items
+            const { error: itemsError } = await supabase
+                .from('item_pesanan_penjualan')
+                .insert(formData.items.map(item => ({
+                    id_jual: newOrder.id,
+                    id_varian: item.variantId,
+                    qty_dipesan: item.quantity,
+                    harga_jual: item.price
+                })));
+
+            if (itemsError) throw itemsError;
+    
+            showToast('Pesanan baru berhasil dibuat', 'success');
+            return false; // Return false to indicate no stock errors
+        }
     } catch (error) {
         console.error('Create order error:', error);
         showToast('Gagal membuat pesanan: ' + error.message, 'error');
+        return true; // Return true to indicate there was an error
     }
 }
 
@@ -1115,6 +1177,7 @@ async function renderOngoingSales() {
                 id,
                 tanggal_pesan,
                 tanggal_dibutuhkan,
+                tanggal_diambil,
                 status_persiapan,
                 status_pesanan,
                 bakul:id_bakul(nama),
@@ -1308,6 +1371,7 @@ function createSaleCard(sale) {
         completeBtn.className = 'btn btn-sm btn-dark ms-2 complete-order';
         completeBtn.innerHTML = '<i class="bi bi-check-circle"></i> Selesaikan';
         completeBtn.dataset.orderId = sale.id;
+        completeBtn.dataset.takenDate = sale.tanggal_diambil;
 
         // Store all items data as JSON in the button
         const itemsData = sale.items.map(item => ({
@@ -1382,13 +1446,30 @@ function setupPreparationCheckbox(checkbox, sale) {
 }
 
 // history
-async function renderHistoryTable() {
+async function renderHistoryTable(
+    startDate = null, 
+    endDate = null, 
+    bakulFilter = null, 
+    pengambilFilter = null, 
+    paymentFilter = null
+) {
     const historyTableBody = document.querySelector('#history tbody');
     if (!historyTableBody) return;
     
     try {
-        // Fetch completed orders (status = 'selesai')
-        const { data: orders, error } = await supabase
+        // Show loading state
+        historyTableBody.innerHTML = `
+            <tr>
+                <td colspan="10" class="text-center">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Memuat riwayat penjualan...
+                </td>
+            </tr>`;
+
+        // Base query
+        let query = supabase
             .from('pesanan_penjualan')
             .select(`
                 id,
@@ -1412,16 +1493,39 @@ async function renderHistoryTable() {
             .eq('status_pesanan', 'selesai')
             .order('tanggal_pesan', { ascending: false });
 
+        // Apply date filter if provided
+        if (startDate && endDate) {
+            query = query.gte('tanggal_pesan', startDate).lte('tanggal_pesan', endDate);
+        }
+
+        // Apply bakul filter if provided
+        if (bakulFilter) {
+            query = query.eq('id_bakul', bakulFilter);
+        }
+
+        // Apply pengambil filter if provided
+        if (pengambilFilter) {
+            query = query.eq('pihak_pengambil', pengambilFilter);
+        }
+
+        // Apply payment filter if provided
+        if (paymentFilter) {
+            query = query.eq('alat_pembayaran', paymentFilter);
+        }
+
+        const { data: orders, error } = await query;
+
         if (error) throw error;
 
+        // Rest of your existing renderHistoryTable implementation...
         historyTableBody.innerHTML = '';
 
         if (orders && orders.length > 0) {
             orders.forEach(order => {
                 // Format dates
-                const formattedOrderDate = new Date(order.tanggal_pesan).toLocaleDateString('id-ID');
-                const formattedTakenDate = order.tanggal_diambil ? new Date(order.tanggal_diambil).toLocaleDateString('id-ID') : '-';
-                const formattedPaymentDate = order.tanggal_dibayar ? new Date(order.tanggal_dibayar).toLocaleDateString('id-ID') : '-';
+                const formattedOrderDate = formatDate(order.tanggal_pesan);
+                const formattedTakenDate = order.tanggal_diambil ? formatDate(order.tanggal_diambil) : '-';
+                const formattedPaymentDate = order.tanggal_dibayar ? formatDate(order.tanggal_dibayar) : '-';
                 
                 // Calculate total quantities
                 const totalOrdered = order.items.reduce((sum, item) => sum + item.qty_dipesan, 0);
@@ -1446,7 +1550,7 @@ async function renderHistoryTable() {
                 historyTableBody.appendChild(row);
             });
 
-            // Add event listeners to reprint buttons
+            // Add event listeners to buttons (same as before)
             document.querySelectorAll('.reprint-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const orderId = e.target.dataset.orderId;
@@ -1459,7 +1563,6 @@ async function renderHistoryTable() {
                 });
             });
 
-            // Add event listeners to detail buttons
             document.querySelectorAll('.detail-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const orderId = e.target.dataset.orderId;
@@ -1469,13 +1572,13 @@ async function renderHistoryTable() {
         } else {
             historyTableBody.innerHTML = `
                 <tr>
-                    <td colspan="11" class="text-center text-muted">Tidak ada riwayat pesanan</td>
+                    <td colspan="10" class="text-center text-muted">Tidak ada riwayat penjualan</td>
                 </tr>
             `;
         }
     } catch (error) {
         console.error('Error fetching history:', error);
-        showToast('Gagal memuat riwayat pesanan', 'error');
+        showToast('Gagal memuat riwayat penjualan', 'error');
     }
 }
 
@@ -1524,8 +1627,8 @@ async function showOrderDetails(orderId) {
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <p><strong>Tanggal Pesan:</strong> ${formatDate(order.tanggal_pesan)}</p>
-                                    <p><strong>Supplier:</strong> ${order.bakul.nama}</p>
-                                    <p><strong>Lokasi Penerimaan:</strong> ${order.pihak_pengambil || '-'}</p>
+                                    <p><strong>Bakul:</strong> ${order.bakul.nama}</p>
+                                    <p><strong>Pihak Pengambil:</strong> ${order.pihak_pengambil || '-'}</p>
                                 </div>
                                 <div class="col-md-6">
                                     <p><strong>Tanggal Diterima:</strong> ${formatDate(order.tanggal_diambil)}</p>
@@ -1585,6 +1688,277 @@ async function showOrderDetails(orderId) {
         console.error('Error showing order details:', error);
         showToast('Gagal memuat detail pesanan', 'error');
     }
+}
+
+// FILTER FUNCTIONS
+// Global filter state
+const activeFilters = {
+    type: null,
+    date: { start: null, end: null },
+    bakul: null,
+    payment: null,
+    taker: null
+};
+
+// Initialize filters
+function initializeHistoryFilters() {
+    // Handle filter type selection (with uncheck capability)
+    document.querySelectorAll('input[name="filterGroup"]').forEach(radio => {
+        radio.addEventListener('click', function(e) {
+            if (this.checked && activeFilters.type === this.value) {
+                // Clicking the already selected radio should uncheck it
+                this.checked = false;
+                resetFilters();
+                return;
+            }
+            activeFilters.type = this.value;
+            
+            // Auto-expand the filter section
+            const filterCollapse = document.getElementById('filterCollapse');
+            const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
+            if (!collapseInstance || filterCollapse.classList.contains('collapsing')) {
+                new bootstrap.Collapse(filterCollapse, { toggle: true });
+            } else if (filterCollapse.classList.contains('collapse')) {
+                collapseInstance.show();
+            }
+            
+            updateFilterUI();
+        });
+    });
+
+    // Apply filter button
+    document.getElementById('applyFilter')?.addEventListener('click', applyHistoryFilters);
+
+    // Reset filter button
+    document.getElementById('resetFilter')?.addEventListener('click', resetFilters);
+
+    // Date inputs
+    document.getElementById('startDate')?.addEventListener('change', function() {
+        activeFilters.date.start = this.value;
+    });
+    document.getElementById('endDate')?.addEventListener('change', function() {
+        activeFilters.date.end = this.value;
+    });
+
+    // Bakul select
+    document.getElementById('bakulSelect')?.addEventListener('change', function() {
+        activeFilters.bakul = this.value;
+    });
+
+    // Payment select
+    document.getElementById('paymentSelect')?.addEventListener('change', function() {
+        activeFilters.payment = this.value;
+    });
+
+    // taker select
+    document.getElementById('takerSelect')?.addEventListener('change', function() {
+        activeFilters.taker = this.value;
+    });
+
+    // Load initial data for dropdowns
+    loadBakulsForFilter();
+    loadPaymentMethodsForFilter();
+    loadTakerForFilter();
+}
+
+// Update filter UI based on selected type
+function updateFilterUI() {
+    // Hide all filter sections first
+    document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
+        section.classList.add('d-none');
+    });
+
+    // Show the selected filter section
+    switch(activeFilters.type) {
+        case 'date':
+            document.getElementById('dateFilter').classList.remove('d-none');
+            break;
+        case 'bakul':
+            document.getElementById('bakulFilter').classList.remove('d-none');
+            break;
+        case 'payment':
+            document.getElementById('paymentFilter').classList.remove('d-none');
+            break;
+        case 'taker':
+            document.getElementById('takerFilter').classList.remove('d-none');
+            break;
+    }
+
+    // Show filter card if not already visible
+    document.getElementById('filterCard').classList.remove('d-none');
+}
+
+async function loadBakulsForFilter() {
+    try {
+        const { data, error } = await supabase
+            .from('bakul')
+            .select('id, nama')
+            .order('nama', { ascending: true });
+
+        if (error) throw error;
+        
+        const select = document.getElementById('bakulSelect');
+        select.innerHTML = '<option value="">Semua Bakul</option>';
+        
+        data.forEach(bakul => {
+            const option = document.createElement('option');
+            option.value = bakul.id;
+            option.textContent = bakul.nama;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading bakul:', error);
+        showToast('Gagal memuat daftar bakul', 'error');
+    }
+}
+
+// Load payment methods for filter
+async function loadPaymentMethodsForFilter() {
+    try {
+        // Get payment methods from enum
+        const paymentMethods = await getPaymentMethodsEnum();
+        
+        const select = document.getElementById('paymentSelect');
+        select.innerHTML = '<option value="">Semua Metode</option>';
+        
+        paymentMethods.forEach(method => {
+            const option = document.createElement('option');
+            option.value = method.value;
+            
+            // Format the display text (capitalize first letter)
+            const displayText = method.value.charAt(0).toUpperCase() + method.value.slice(1);
+            option.textContent = displayText;
+            
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading payment methods:', error);
+        showToast('Gagal memuat metode pembayaran', 'error');
+        
+        // Fallback UI update
+        const select = document.getElementById('paymentSelect');
+        select.innerHTML = `
+            <option value="">Semua Metode</option>
+            <option value="tunai">Tunai</option>
+            <option value="transfer">Transfer</option>
+        `;
+    }
+}
+
+async function loadTakerForFilter() {
+    try {
+        const takers = await getTakerList();
+        
+        const select = document.getElementById('takerSelect');
+        select.innerHTML = '<option value="">Semua Pihak</option>';
+        
+        takers.forEach(taker => {
+            const option = document.createElement('option');
+            option.value = taker.value;
+            
+            // Format the display text (capitalize first letter)
+            const displayText = taker.value.charAt(0).toUpperCase() + taker.value.slice(1);
+            option.textContent = displayText;
+            
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading taker:', error);
+        showToast('Gagal memuat daftar pihak pengambil', 'error');
+        
+        // Fallback UI update
+        const select = document.getElementById('takerSelect');
+        select.innerHTML = `
+            <option value="">Semua Pihak</option>
+            <option value="gudang">Sendiri</option>
+            <option value="toko">Perwakilan</option>
+        `;
+    }
+}
+
+// Apply selected filters
+function applyHistoryFilters() {
+    // Get current filter values based on active type
+    switch(activeFilters.type) {
+        case 'date':
+            activeFilters.date.start = document.getElementById('startDate').value;
+            activeFilters.date.end = document.getElementById('endDate').value;
+            break;
+        case 'bakul':
+            activeFilters.bakul = document.getElementById('bakulSelect').value;
+            break;
+        case 'payment':
+            activeFilters.payment = document.getElementById('paymentSelect').value;
+            break;
+        case 'taker':
+            activeFilters.taker = document.getElementById('takerSelect').value;
+            break;
+    }
+
+    // Apply filters to the history data
+    filterHistory();
+}
+
+// Filter history data based on active filters
+async function filterHistory() {
+    try {
+        // Get filter values from activeFilters
+        const startDate = activeFilters.type === 'date' ? activeFilters.date.start : null;
+        const endDate = activeFilters.type === 'date' ? activeFilters.date.end : null;
+        const bakulFilter = activeFilters.type === 'bakul' ? activeFilters.bakul : null;
+        const paymentFilter = activeFilters.type === 'payment' ? activeFilters.payment : null;
+        const takerFilter = activeFilters.type === 'taker' ? activeFilters.taker : null;
+
+        // Call your existing render function with filters
+        await renderHistoryTable(
+            startDate,
+            endDate,
+            bakulFilter,
+            paymentFilter,
+            takerFilter
+        );
+
+    } catch (error) {
+        console.error('Error filtering history:', error);
+        showToast('Gagal memfilter riwayat', 'error');
+    }
+}
+
+// Reset all filters
+function resetFilters() {
+    // Uncheck all radio buttons
+    document.querySelectorAll('input[name="filterGroup"]').forEach(radio => {
+        radio.checked = false;
+    });
+
+    // Reset active filters
+    activeFilters.type = null;
+    activeFilters.date = { start: null, end: null };
+    activeFilters.bakul = null;
+    activeFilters.payment = null;
+    activeFilters.taker = null;
+
+    // Reset form inputs
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    document.getElementById('bakulSelect').value = '';
+    document.getElementById('paymentSelect').value = '';
+    document.getElementById('takerSelect').value = '';
+
+    // Hide all filter sections
+    document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
+        section.classList.add('d-none');
+    });
+
+    // Collapse the filter section
+    const filterCollapse = document.getElementById('filterCollapse');
+    const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
+    if (collapseInstance && !filterCollapse.classList.contains('collapse')) {
+        collapseInstance.hide();
+    }
+
+    // Refresh the history list without filters
+    renderHistoryTable();
 }
 
 // Receipt
@@ -1665,6 +2039,22 @@ async function exportToPdf() {
 
         // Fetch order data
         const order = await fetchOrderData(orderId);
+
+        if (!order.tanggal_dibayar || !order.total_dibayarkan || !order.alat_pembayaran) {
+            const paymentData = collectFormData();
+            if (paymentData) {
+                order = {
+                    ...order,
+                    tanggal_dibayar: paymentData.tanggalPembayaran,
+                    // Also get other payment data from form if needed
+                    total_dibayarkan: parseFloat(paymentData.totalDibayarkan),
+                    alat_pembayaran: paymentData.alatPembayaran
+                };
+            } else {
+                throw new Error('Data pembayaran belum lengkap');
+            }
+        }
+
         const receiptHtml = generateReceiptHtml(order);
 
         // Create PDF
@@ -1841,9 +2231,9 @@ function generateReceiptHtml(order) {
         <!-- Items Table -->
         <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
             <colgroup>
-                <col style="width:50%">  <!-- Product name column -->
-                <col style="width:15%">  <!-- Qty column -->
-                <col style="width:35%">  <!-- Price column -->
+                <col style="width:50%"> 
+                <col style="width:15%"> 
+                <col style="width:35%">  
             </colgroup>
             <thead>
                 <tr>
@@ -1923,6 +2313,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const addDataBtn = document.getElementById('addSaleBtn');
     const ongoingTab = document.getElementById('ongoing-tab');
     const historyTab = document.getElementById('history-tab');
+
+    tabs.addEventListener('click', function(e) {
+        if (e.target && e.target.matches('#history-tab')) {
+            // Hide the add button when history tab is clicked
+            addDataBtn.style.display = 'none';
+        } else if (e.target && e.target.matches('#ongoing-tab')) {
+            // Show the add button when ongoing tab is clicked
+            addDataBtn.style.display = 'inline-block';
+        }
+    });
     
 
     // Load initial data
@@ -1983,6 +2383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target.closest('.complete-order')) {
             const button = e.target.closest('.complete-order');
             const orderId = button.dataset.orderId;
+            const date = button.dataset.takenDate;
             const itemsData = JSON.parse(button.dataset.items || '[]');
             
             try {
@@ -2001,7 +2402,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         type: 'penjualan',
                         id: orderId,
                         quantity: item.qty,
-                        price: item.price
+                        price: item.price,
+                        date: date
                     });
                 }
 
@@ -2036,13 +2438,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function initPage() {
         renderOngoingSales();
+        initializeHistoryFilters();
         
         if (addDataBtn) {
             addDataBtn.addEventListener('click', () => openSaleModal('add'));
         }
         
         if (ongoingTab) ongoingTab.addEventListener('click', renderOngoingSales);
-        if (historyTab) historyTab.addEventListener('click', renderHistoryTable);
+        if (historyTab) historyTab.addEventListener('click', () => {
+            // Reset filters and render history when tab is clicked
+            resetFilters();
+            renderHistoryTable();
+        });
     }
 });
 

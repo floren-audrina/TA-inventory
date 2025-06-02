@@ -113,21 +113,29 @@
         #productsTable td:nth-child(2) .form-select {
             width: 100%;
         }
+        .table-danger {
+            background-color: #fff5f5 !important;
+        }
+        .stock-error {
+            color: #dc3545;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body class="p-4 bg-light">
     <div id="navbar"></div>
-    <script>
+    <script type="module">
+        import navbarUrl from './src/navbar.js?url';
+
         fetch("navbar.html")
             .then(response => response.text())
             .then(html => {
-                document.getElementById("navbar").innerHTML = html;
-    
-                // Load the navbar.js script after the navbar content is injected
-                const script = document.createElement('script');
-                script.src = '../src/navbar.js';
-                script.type = 'module'; // Ensure the script is treated as a module
-                document.body.appendChild(script);
+            document.getElementById("navbar").innerHTML = html;
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = navbarUrl;
+            document.body.appendChild(script);
             })
             .catch(error => console.error('Error loading navbar:', error));
     </script>
@@ -140,16 +148,6 @@
                 <button class="btn btn-primary me-2" id="addSaleBtn">
                     <i class="bi bi-plus"></i> Tambah Penjualan
                 </button>
-                <div class="btn-group">
-                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        Urutkan berdasarkan ▼
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#">Terbaru</a></li>
-                        <li><a class="dropdown-item" href="#">Terlama</a></li>
-                        <li><a class="dropdown-item" href="#">Pelanggan (A-Z)</a></li>
-                    </ul>
-                </div>
             </div>
         </div>
 
@@ -178,6 +176,86 @@
 
             <!-- History Tab (Table) -->
             <div class="tab-pane fade table-container" id="history" role="tabpanel">
+                <!-- Filter Section -->
+                <div class="mb-3">
+                    <strong>Filter berdasarkan:</strong>
+                    <div class="form-check form-check-inline ms-2">
+                        <input class="form-check-input" type="radio" name="filterGroup" id="filterDate" value="date">
+                        <label class="form-check-label" for="filterDate">Tanggal</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="filterGroup" id="filterBakul" value="bakul">
+                        <label class="form-check-label" for="filterBakul">Bakul</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="filterGroup" id="filterPayment" value="payment">
+                        <label class="form-check-label" for="filterPayment">Pembayaran</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="filterGroup" id="filterTaker" value="taker">
+                        <label class="form-check-label" for="filtertaker">Pengambil</label>
+                    </div>
+                </div>
+
+                <!-- Filter collapsible section -->
+                <div class="card mb-3" id="filterCard">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center" style="cursor: pointer" data-bs-toggle="collapse" href="#filterCollapse">
+                        <h6 class="mb-0">Filter Riwayat</h6>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="collapse" id="filterCollapse">
+                        <div class="card-body" id="filterOptionsContainer">
+                            <!-- Date filter -->
+                            <div class="row g-3" id="dateFilter">
+                                <div class="col-md-6">
+                                    <label for="startDate" class="form-label">Dari Tanggal</label>
+                                    <input type="date" class="form-control" id="startDate">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="endDate" class="form-label">Sampai Tanggal</label>
+                                    <input type="date" class="form-control" id="endDate">
+                                </div>
+                            </div>
+
+                            <!-- bakul filter -->
+                            <div class="row g-3 d-none" id="bakulFilter">
+                                <div class="col-12">
+                                    <label for="bakulSelect" class="form-label">Bakul</label>
+                                    <select class="form-select" id="bakulSelect">
+                                        <option value="">Semua Bakul</option>
+                                        <!-- Dynamically populated -->
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Payment filter -->
+                            <div class="row g-3 d-none" id="paymentFilter">
+                                <div class="col-12">
+                                    <label for="paymentSelect" class="form-label">Metode Pembayaran</label>
+                                    <select class="form-select" id="paymentSelect">
+                                        <option value="">Semua Metode</option>
+                                        <!-- Dynamically populated -->
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Location filter -->
+                            <div class="row g-3 d-none" id="takerFilter">
+                                <div class="col-12">
+                                    <label for="locationSelect" class="form-label">Pihak Pengambil</label>
+                                    <select class="form-select" id="takerSelect">
+                                        <option value="">Semua Pihak</option>
+                                        <!-- Dynamically populated -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-light">
+                            <button class="btn btn-sm btn-primary me-2" id="applyFilter">Terapkan</button>
+                            <button class="btn btn-sm btn-outline-secondary" id="resetFilter">Reset</button>
+                        </div>
+                    </div>
+                </div>
                 <!-- <div class="table-responsive mt-3"> -->
                     <table class="table table-bordered table-hover">
                         <thead class="table-light">
@@ -310,6 +388,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="../src/penjualan.js"></script>
+    <script type="module" src="./src/penjualan.js"></script>
 </body>
 </html>

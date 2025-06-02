@@ -1,5 +1,74 @@
 import supabase from './db_conn.js';
 const { jsPDF } = window.jspdf;
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
+
+function showToast(message, type = 'success') {
+    const toastContainer = document.getElementById('toastContainer');
+
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.classList.add('toast');
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+
+    // Add background color based on type
+    toast.classList.add(type === 'success' ? 'bg-success' : 'bg-danger');
+    toast.classList.add('text-white');
+
+    // Toast body
+    const toastBody = document.createElement('div');
+    toastBody.classList.add('toast-body');
+    toastBody.textContent = message;
+
+    // Append body to toast
+    toast.appendChild(toastBody);
+
+    // Append toast to container
+    toastContainer.appendChild(toast);
+
+    // Initialize Bootstrap toast
+    const bootstrapToast = new bootstrap.Toast(toast, {
+        autohide: true,
+        delay: 3000, // Toast will disappear after 3 seconds
+    });
+
+    // Show toast
+    bootstrapToast.show();
+
+    // Remove toast from DOM after it hides
+    toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+    });
+}
+
+function scrollReportToTop() {
+    const container = document.querySelector('.report-container');
+    if (container) {
+        container.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }
+}
+
+function isEmptyData(data) {
+    if (Array.isArray(data)) {
+        return data.length === 0;
+    }
+    if (typeof data === 'object' && data !== null) {
+        if (data.logs) { // For Stock Opname report
+            return data.logs.length === 0;
+        }
+        return Object.keys(data).length === 0;
+    }
+    return false;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     // DOM elements
@@ -101,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Calculate Profits
             const grossProfit = totalRevenue - totalCOGS;
-            const operatingExpenses = grossProfit * 0.3; // Assuming 30% operating expenses
+            const operatingExpenses = 135000 * 4; // Assuming 30% operating expenses
             const netProfit = grossProfit - operatingExpenses;
             
             return {
@@ -742,7 +811,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `)
                 .gte('tanggal', startDate)
                 .lte('tanggal', endDate)
-                .order('tanggal', { ascending: true });
+                .order('id_varian', { ascending: true });
 
             if (error) throw error;
 
@@ -765,8 +834,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 variant.history.push(record);
                 
                 // Store purchases for FIFO HPP calculation
-                if (record.tipe_riwayat === 'penjualan') {
-                    variant.purchaseHistory.push({
+                if (['penjualan', 'penyesuaian_keluar'].includes(record.tipe_riwayat)) {
+                    variant.hppHistory = variant.hppHistory || [];
+                    variant.hppHistory.push({
                         qty: record.qty,
                         hpp: record.hpp,
                         tanggal: record.tanggal
@@ -813,17 +883,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     : openingBalance;
 
                 // D. HPP Calculation (FIFO-compatible approach)
-                let hpp;
-                if (variant.purchaseHistory.length > 0) {
-                    // Option 1: FIFO Unit Cost (latest purchase)
-                    hpp = variant.purchaseHistory[variant.purchaseHistory.length - 1].hpp;
-                    
-                    // Option 2: Weighted Average (uncomment if preferred)
-                    // const totalHppValue = variant.purchaseHistory.reduce((sum, p) => sum + (p.hpp * p.qty), 0);
-                    // const totalQty = variant.purchaseHistory.reduce((sum, p) => sum + p.qty, 0);
-                    // hpp = totalQty > 0 ? totalHppValue / totalQty : 0;
-                } else {
-                    hpp = 0;
+                let hpp = 0;
+                if (variant.hppHistory && variant.hppHistory.length > 0) {
+                    variant.hppHistory.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal)); // descending
+                    hpp = variant.hppHistory[0].hpp;
+
+                    console.log(`Latest HPP for ${variant.name}`, variant.hppHistory[0]);
                 }
 
                 return {
@@ -885,7 +950,8 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     "Stock Opname": {
         fetchData: async (startDate, endDate) => {
-            const { data: logs, error } = await supabase
+            // Fetch stock opname logs
+            const { data: logs, error: logsError } = await supabase
                 .from('log_opname')
                 .select(`
                     id,
@@ -907,10 +973,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 .lte('tanggal', endDate)
                 .order('tanggal', { ascending: false });
             
-            if (error) throw error;
+            if (logsError) throw logsError;
+
+            // Fetch adjustment history for all logs
+            const logIds = logs.map(log => log.id);
+            const { data: adjustments, error: adjError } = await supabase
+                .from('riwayat_stok')
+                .select('id, id_referensi, qty, tipe_riwayat')
+                .in('id_referensi', logIds)
+                .or('tipe_riwayat.eq.penyesuaian_masuk,tipe_riwayat.eq.penyesuaian_keluar');
+            
+            if (adjError) throw adjError;
+
+            // Group adjustments by log id
+            const adjustmentsByLog = {};
+            adjustments.forEach(adj => {
+                if (!adjustmentsByLog[adj.id_referensi]) {
+                    adjustmentsByLog[adj.id_referensi] = [];
+                }
+                adjustmentsByLog[adj.id_referensi].push(adj);
+            });
 
             return {
-                logs
+                logs,
+                adjustmentsByLog
             };
         },
         template: (data, startDate, endDate) => {
@@ -918,7 +1004,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const end = new Date(endDate).toLocaleDateString('id-ID');
             return `
             <div class="stock-opname-report">
-                <h4 class="report-header">Laporan Stock Opname Tahun ${year}</h4>
+                <h4 class="report-header">Laporan Stock Opname ${start} - ${end}</h4>
                 
                 <table class="table table-bordered table-hover">
                     <thead class="table-light">
@@ -927,59 +1013,47 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th>Tanggal</th>
                             <th>Status Log</th>
                             <th>ID Item</th>
+                            <th>Nama Produk</th>
                             <th>Status Item</th>
-                            <th>Stok Sistem</th>
-                            <th>Stok Fisik</th>
-                            <th>Selisih</th>
+                            <th>Stok</th>
+                            <th>Penyesuaian</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${data.logs.map(log => `
-                            ${log.item_opname.map((item, index) => `
-                                <tr class="${log.status_log === 'final' ? 'table-success' : 'table-warning'}">
-                                    ${index === 0 ? `
-                                        <td rowspan="${log.item_opname.length}">${log.id}</td>
-                                        <td rowspan="${log.item_opname.length}">${new Date(log.tanggal).toLocaleDateString('id-ID')}</td>
-                                        <td rowspan="${log.item_opname.length}">
-                                            ${log.status_log}
+                            ${log.item_opname.map((item, index) => {
+                                // Find adjustment for this item
+                                const adjustments = data.adjustmentsByLog[log.id] || [];
+                                const itemAdjustment = adjustments.find(adj => adj.id === item.id);
+                                const adjustmentValue = itemAdjustment ? 
+                                    (itemAdjustment.tipe_riwayat === 'penyesuaian_masuk' ? 
+                                    `+${itemAdjustment.qty}` : 
+                                    `-${itemAdjustment.qty}`) : 
+                                    '0';
+                                
+                                return `
+                                    <tr class="${log.status_log === 'final' ? 'table-success' : 'table-warning'}">
+                                        ${index === 0 ? `
+                                            <td rowspan="${log.item_opname.length}">${log.id}</td>
+                                            <td rowspan="${log.item_opname.length}">${new Date(log.tanggal).toLocaleDateString('id-ID')}</td>
+                                            <td rowspan="${log.item_opname.length}">
+                                                ${log.status_log}
+                                            </td>
+                                        ` : ''}
+                                        <td>VAR${item.id_varian.toString().padStart(4, '0')}</td>
+                                        <td>${item.varian?.produk?.nama || ''} - ${item.varian?.varian || ''}</td>
+                                        <td>${item.status_item_log}</td>
+                                        <td class="text-end">${item.stok}</td>
+                                        <td class="text-end ${adjustmentValue.startsWith('+') ? 'text-success' : adjustmentValue.startsWith('-') ? 'text-danger' : ''}">
+                                            ${item.status_item_log === 'disesuaikan' ? adjustmentValue : '0'}
                                         </td>
-                                    ` : ''}
-                                    <td>VAR${item.id_varian.toString().padStart(4, '0')}</td>
-                                    <td>
-                                        ${item.status_item_log}
-                                    </td>
-                                    <td class="text-end">${item.varian?.jumlah_stok || 0}</td>
-                                    <td class="text-end">${item.stok}</td>
-                                    <td class="text-end ${item.stok - (item.varian?.jumlah_stok || 0) > 0 ? 'text-success' : item.stok - (item.varian?.jumlah_stok || 0) < 0 ? 'text-danger' : ''}">
-                                        ${item.stok - (item.varian?.jumlah_stok || 0) > 0 ? '+' : ''}${item.stok - (item.varian?.jumlah_stok || 0)}
-                                    </td>
-                                </tr>
-                            `).join('')}
+                                    </tr>
+                                `;
+                            }).join('')}
                         `).join('')}
                     </tbody>
                 </table>
             </div>
-
-            <style>
-                .table {
-                    border-collapse: collapse;
-                    width: 100%;
-                }
-                .table th, .table td {
-                    border: 1px solid #dee2e6;
-                    padding: 8px;
-                    vertical-align: middle;
-                }
-                .table th {
-                    background-color: #f8f9fa;
-                    text-align: left;
-                }
-                .table-success { background-color: rgba(40, 167, 69, 0.05); }
-                .table-warning { background-color: rgba(255, 193, 7, 0.05); }
-                .text-success { color: #28a745 !important; }
-                .text-danger { color: #dc3545 !important; }
-                .text-end { text-align: right; }
-            </style>
             `;
         }
     }
@@ -1009,11 +1083,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Validate date range
         if (!startDate || !endDate) {
             showToast('Harap pilih rentang tanggal', 'error');
+            disableDownloadButton(); // Disable download button
             return;
         }
         
         if (new Date(startDate) > new Date(endDate)) {
             showToast('Tanggal mulai tidak boleh lebih besar dari tanggal akhir', 'error');
+            disableDownloadButton(); // Disable download button
             return;
         }
         
@@ -1022,13 +1098,27 @@ document.addEventListener('DOMContentLoaded', () => {
             generateText.textContent = 'Memuat...';
             generateSpinner.style.display = 'inline-block';
             generateBtn.disabled = true;
+            disableDownloadButton(); // Disable download button while loading
             
             // Fetch data with date range
             const data = await reportData[jenis].fetchData(startDate, endDate);
             
+            // Check if data is empty
+            if (isEmptyData(data)) {
+                reportContent.innerHTML = `
+                    <div class="alert alert-info text-center">
+                        Tidak ada data yang tersedia untuk laporan ini dengan filter yang dipilih.
+                    </div>
+                `;
+                disableDownloadButton(); // Disable download button when no data
+                return;
+            }
+            
             // Generate HTML with date range
             const content = reportData[jenis].template(data, startDate, endDate);
             reportContent.innerHTML = content;
+            enableDownloadButton(); // Enable download button when data is available
+            setTimeout(scrollReportToTop, 100);
         } catch (error) {
             console.error('Error generating report:', error);
             reportContent.innerHTML = `
@@ -1036,6 +1126,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     Gagal memuat laporan: ${error.message}
                 </div>
             `;
+            disableDownloadButton(); // Disable download button on error
         } finally {
             // Reset loading state
             generateText.textContent = 'Buat Laporan';
@@ -1043,6 +1134,20 @@ document.addEventListener('DOMContentLoaded', () => {
             generateBtn.disabled = false;
         }
     }
+
+    // Add these helper functions to enable/disable the download button
+    function disableDownloadButton() {
+        downloadBtn.disabled = true;
+        downloadBtn.classList.add('disabled');
+    }
+
+    function enableDownloadButton() {
+        downloadBtn.disabled = false;
+        downloadBtn.classList.remove('disabled');
+    }
+
+    // Initialize with download button disabled
+    disableDownloadButton();
 
     // Download PDF function
     // async function downloadPDF() {
@@ -1112,149 +1217,163 @@ document.addEventListener('DOMContentLoaded', () => {
         pdf.text(`${start} - ${end}`, 105, yPos, {align: 'center'});
         yPos += 15;
         
-        // 3. Get report data
-        const data = await reportData[jenis].fetchData(startDate, endDate);
-        const groupBy = document.getElementById('groupBy')?.value || 'order';
-        
-        // 4. Generate report-specific content
-        switch(jenis) {
-            case 'Laba Rugi':
-                generateProfitLossTable(pdf, data, yPos, margin);
-                break;
+        try {
+            // 3. Get report data
+            const data = await reportData[jenis].fetchData(startDate, endDate);
+            
+            // Check if data is empty
+            if (isEmptyData(data)) {
+                pdf.setFontSize(12);
+                pdf.setTextColor(100);
+                pdf.text('Tidak ada data yang tersedia untuk laporan ini dengan filter yang dipilih.', 
+                        105, yPos, {align: 'center'});
                 
-            // In the generatePDF function:
-            case 'Pembelian':
-                if (groupBy === 'supplier') {
-                    generateByEntity(pdf, data, yPos, margin, {
-                        entityType: 'supplier',
-                        entityLabel: 'SUPPLIER',
-                        amountLabel: 'TOTAL DIBERIKAN (Rp)'
-                    });
-                } else if (groupBy === 'product') {
-                    generateByProduct(pdf, data, yPos, margin, {
-                        entityLabel: 'SUPPLIER',
-                        amountLabel: 'TOTAL DIBERIKAN (Rp)',
-                        qtyLabel: 'TOTAL DIBELI'
-                    });
-                } else {
-                    generateByOrder(pdf, data, yPos, margin, {
-                        prefix: 'PO',
-                        contactLabel: 'Supplier',
-                        reportLabel: 'Pembelian',
-                        itemField: 'item_pesanan_pembelian',
-                        isPenjualan: false
-                    });
-                }
-                break;
+                // Add footer to all pages
+                addFooter(pdf, margin);
+                
+                pdf.save(`Laporan_${jenis}_${new Date().getFullYear()}.pdf`);
+                return;
+            }
+            
+            const groupBy = document.getElementById('groupBy')?.value || 'order';
+            
+            // 4. Generate report-specific content
+            switch(jenis) {
+                case 'Laba Rugi':
+                    generateProfitLossTable(pdf, data, yPos, margin);
+                    break;
+                    
+                case 'Pembelian':
+                    if (groupBy === 'supplier') {
+                        generateByEntity(pdf, data, yPos, margin, {
+                            entityType: 'supplier',
+                            entityLabel: 'SUPPLIER',
+                            amountLabel: 'TOTAL DIBERIKAN (Rp)'
+                        });
+                    } else if (groupBy === 'product') {
+                        generateByProduct(pdf, data, yPos, margin, {
+                            entityLabel: 'SUPPLIER',
+                            amountLabel: 'TOTAL DIBERIKAN (Rp)',
+                            qtyLabel: 'TOTAL DIBELI'
+                        });
+                    } else {
+                        generateByOrder(pdf, data, yPos, margin, {
+                            prefix: 'PO',
+                            contactLabel: 'Supplier',
+                            reportLabel: 'Pembelian',
+                            itemField: 'item_pesanan_pembelian',
+                            isPenjualan: false
+                        });
+                    }
+                    break;
 
-            case 'Penjualan':
-                if (groupBy === 'customer') {
-                    generateByEntity(pdf, data, yPos, margin, {
-                        entityType: 'customer',
-                        entityLabel: 'BAKUL',
-                        amountLabel: 'TOTAL DIBERIKAN (Rp)'
-                    });
-                } else if (groupBy === 'product') {
-                    generateByProduct(pdf, data, yPos, margin, {
-                        entityLabel: 'BAKUL',
-                        amountLabel: 'TOTAL PENDAPATAN (Rp)',
-                        qtyLabel: 'TOTAL TERJUAL'
-                    });
-                } else {
-                    generateByOrder(pdf, data, yPos, margin, {
-                        prefix: 'SO',
-                        contactLabel: 'Bakul',
-                        reportLabel: 'Penjualan',
-                        itemField: 'item_pesanan_penjualan',
-                        isPenjualan: true
-                    });
-                }
-                break;
-                
-            case 'Kartu Stok':
-                generateStockCardTable(pdf, data, yPos, margin);
-                break;
-                
-            case 'Stock Opname':
-                generateStockOpname(pdf, data, yPos, margin);
-                break;
+                case 'Penjualan':
+                    if (groupBy === 'customer') {
+                        generateByEntity(pdf, data, yPos, margin, {
+                            entityType: 'customer',
+                            entityLabel: 'BAKUL',
+                            amountLabel: 'TOTAL DIBERIKAN (Rp)'
+                        });
+                    } else if (groupBy === 'product') {
+                        generateByProduct(pdf, data, yPos, margin, {
+                            entityLabel: 'BAKUL',
+                            amountLabel: 'TOTAL PENDAPATAN (Rp)',
+                            qtyLabel: 'TOTAL TERJUAL'
+                        });
+                    } else {
+                        generateByOrder(pdf, data, yPos, margin, {
+                            prefix: 'SO',
+                            contactLabel: 'Bakul',
+                            reportLabel: 'Penjualan',
+                            itemField: 'item_pesanan_penjualan',
+                            isPenjualan: true
+                        });
+                    }
+                    break;
+                    
+                case 'Kartu Stok':
+                    generateStockCardTable(pdf, data, yPos, margin);
+                    break;
+                    
+                case 'Stock Opname':
+                    generateStockOpname(pdf, data, yPos, margin);
+                    break;
+            }
+            
+            // 5. Add footer to all pages
+            addFooter(pdf, margin);
+            
+            pdf.save(`Laporan_${jenis}_${new Date().getFullYear()}.pdf`);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            showToast('Gagal membuat PDF: ' + error.message, 'error');
         }
-        
-        // 5. Add footer to all pages
-        addFooter(pdf, margin);
-        
-        pdf.save(`Laporan_${jenis}_${new Date().getFullYear()}.pdf`);
     }
     
     // ===== REPORT TYPE TEMPLATES ===== //
     
     function generateProfitLossTable(pdf, data, yPos, margin) {
-        // Prepare the financial data
         const financialData = [
-            ['PENDAPATAN', formatCurrencyPDF(data.totalRevenue)],
+            ['Pendapatan', formatCurrencyPDF(data.totalRevenue)],
             ['Harga Pokok Penjualan (HPP)', formatCurrencyPDF(data.totalCOGS)],
-            ['LABA KOTOR', formatCurrencyPDF(data.grossProfit)],
+            ['Laba Kotor', formatCurrencyPDF(data.grossProfit)],
             ['Biaya Operasional', formatCurrencyPDF(data.operatingExpenses)],
-            ['LABA BERSIH', formatCurrencyPDF(data.netProfit)]
+            ['Laba Bersih', formatCurrencyPDF(data.netProfit)]
         ];
-    
-        // Create the table
+
         pdf.autoTable({
             head: [['KETERANGAN', 'JUMLAH (Rp)']],
             body: financialData,
             startY: yPos,
-            margin: {left: margin, right: margin},
+            margin: { left: margin, right: margin },
+            theme: 'grid',
             headStyles: {
                 fillColor: [255, 255, 255],
                 textColor: 0,
                 fontStyle: 'bold',
                 fontSize: 11,
-                lineWidth: 0.1,             // thin border
+                halign: 'center',
+                valign: 'middle',
+                lineWidth: 0.1,
                 lineColor: [0, 0, 0]
             },
             bodyStyles: {
-                fillColor: [255, 255, 255], // white background for rows
-                textColor: 0,               // black text
+                fillColor: [255, 255, 255],
+                textColor: 0,
+                fontSize: 10,
                 lineWidth: 0.1,
                 lineColor: [0, 0, 0],
                 cellPadding: 2,
-                fontSize: 10
+                valign: 'middle'
             },
             alternateRowStyles: {
-                fillColor: [255, 255, 255] // disable striping
+                fillColor: [255, 255, 255]
             },
             columnStyles: {
-                1: {
-                    halign: 'right',
-                    cellWidth: 50
+                0: { halign: 'left' },
+                1: { halign: 'right', cellWidth: 60 }
+            },
+
+            didParseCell: (data) => {
+                const rowIndex = data.row.index;
+                const isResultRow = rowIndex === 2 || rowIndex === 4;
+
+                if (data.section === 'body' && isResultRow) {
+                    data.cell.styles.fontStyle = 'bold';
+                    data.cell.styles.fillColor = [0,0,0]; // dark grey
+                    data.cell.styles.textColor = [255, 255, 255]; // white text
+
+                    if (data.column.index === 0) {
+                        data.cell.styles.halign = 'right'; // align KETERANGAN to right
+                    }
                 }
             },
+
             didDrawCell: (data) => {
-                // Highlight important rows
-                const highlightRows = [0, 2, 4]; // Pendapatan, Laba Kotor, Laba Bersih
-                if (highlightRows.includes(data.row.index)) {
-                    pdf.setFillColor(255, 255, 255); // Light blue highlight
-                    pdf.rect(
-                        data.cell.x - 1,
-                        data.cell.y - 1,
-                        data.cell.width + 2,
-                        data.cell.height + 2,
-                        'F'
-                    );
-                    // Redraw text over highlight
-                    pdf.setTextColor(0);
-                    pdf.text(
-                        data.cell.raw,
-                        data.cell.x + data.cell.width - 2,
-                        data.cell.y + data.cell.height - 5,
-                        { align: 'right' }
-                    );
-                }
-                
-                // Add thousand separators
-                if (data.column.index === 1 && data.cell.raw) {
-                    const formatted = formatCurrencyPDF(parseFloat(data.cell.raw.replace(/\./g, '')));
-                    data.cell.text = formatted;
+                // Ensure currency is properly formatted
+                if (data.column.index === 1 && typeof data.cell.raw === 'string') {
+                    const numeric = parseFloat(data.cell.raw.replace(/\./g, '').replace(',', '.'));
+                    data.cell.text = formatCurrencyPDF(numeric);
                 }
             }
         });
@@ -1541,386 +1660,221 @@ document.addEventListener('DOMContentLoaded', () => {
         pdf.text(`Total ${reportLabel}: ${formatCurrencyPDF(total)}`, margin, yPos);
     }
 
-    // pembelian
-    // function generatePembelianBySupplier(pdf, data, yPos, margin) {
-    //     const totalPaid = data.reduce((sum, item) => sum + (item.totalPaid || 0), 0);
-    //     const totalItems = data.reduce((sum, item) => sum + (item.totalItems || 0), 0);
-        
-    //     // Prepare table data
-    //     const headers = ['NO', 'SUPPLIER', 'TOTAL PESANAN', 'TOTAL ITEMS', 'TOTAL (Rp)'];
-    //     const body = data.map((item, index) => [
-    //         index + 1,
-    //         `${item.supplier?.perusahaan || '-'}\n${item.supplier?.cp || '-'}`,
-    //         item.totalOrders,
-    //         item.totalItems,
-    //         formatCurrencyPDF(item.totalPaid)
-    //     ]);
-        
-    //     // Add total row
-    //     body.push([
-    //         '',
-    //         'TOTAL',
-    //         data.length,
-    //         totalItems,
-    //         formatCurrencyPDF(totalPaid)
-    //     ]);
-        
-    //     // Generate table
-    //     pdf.autoTable({
-    //         head: [headers],
-    //         body: body,
-    //         startY: yPos,
-    //         margin: {left: margin, right: margin},
-    //         headStyles: {
-    //             fillColor: [13, 71, 161],
-    //             textColor: 255,
-    //             fontStyle: 'bold'
-    //         },
-    //         columnStyles: {
-    //             2: {halign: 'right'},
-    //             3: {halign: 'right'},
-    //             4: {halign: 'right'},
-    //             [body.length-1]: {
-    //                 fontStyle: 'bold',
-    //                 fillColor: [220, 220, 220]
-    //             }
-    //         },
-    //         styles: {
-    //             fontSize: 10,
-    //             cellPadding: 4,
-    //             overflow: 'linebreak'
-    //         },
-    //         didParseCell: (data) => {
-    //             if (data.row.index === body.length-1) {
-    //                 data.cell.styles.fontStyle = 'bold';
-    //                 if (data.column.index === 1) {
-    //                     data.cell.colSpan = 1;
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-
-    // function generatePembelianByProduct(pdf, data, yPos, margin) {
-    //     const totalPurchased = data.reduce((sum, item) => sum + (item.totalPurchased || 0), 0);
-        
-    //     // Prepare table data
-    //     const headers = ['NO', 'PRODUK', 'TOTAL DIBELI', 'SUPPLIER'];
-    //     const body = data.map((item, index) => [
-    //         index + 1,
-    //         item.product,
-    //         item.totalPurchased,
-    //         item.suppliers || '-'
-    //     ]);
-        
-    //     // Add total row
-    //     body.push([
-    //         '',
-    //         'TOTAL',
-    //         totalPurchased,
-    //         ''
-    //     ]);
-        
-    //     // Generate table
-    //     pdf.autoTable({
-    //         head: [headers],
-    //         body: body,
-    //         startY: yPos,
-    //         margin: {left: margin, right: margin},
-    //         headStyles: {
-    //             fillColor: [13, 71, 161],
-    //             textColor: 255,
-    //             fontStyle: 'bold'
-    //         },
-    //         columnStyles: {
-    //             2: {halign: 'right'},
-    //             [body.length-1]: {
-    //                 fontStyle: 'bold',
-    //                 fillColor: [220, 220, 220]
-    //             }
-    //         },
-    //         styles: {
-    //             fontSize: 10,
-    //             cellPadding: 4,
-    //             overflow: 'linebreak'
-    //         },
-    //         didParseCell: (data) => {
-    //             if (data.row.index === body.length-1) {
-    //                 data.cell.styles.fontStyle = 'bold';
-    //                 if (data.column.index === 1) {
-    //                     data.cell.colSpan = 1;
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-
-    // function generatePembelianByOrder(pdf, data, yPos, margin) {
-    //     const total = data.reduce((sum, order) => sum + (order.total_dibayarkan || 0), 0);
-        
-    //     // Add title for orders list
-    //     pdf.setFontSize(12);
-    //     pdf.setTextColor(0);
-    //     pdf.text('Daftar Pesanan Pembelian', margin, yPos);
-    //     yPos += 10;
-        
-    //     // Process each order
-    //     data.forEach((order, orderIndex) => {
-    //         const orderTotalItems = order.item_pesanan_pembelian?.reduce((sum, item) => sum + (item.qty_dipesan || 0), 0) || 0;
-            
-    //         // Add order header
-    //         pdf.setFontSize(10);
-    //         pdf.setFont('helvetica', 'bold');
-    //         pdf.text(`PO-${order.id.toString().padStart(4, '0')} - ${formatDate(order.tanggal_pesan)}`, margin, yPos);
-    //         yPos += 5;
-            
-    //         pdf.setFont('helvetica', 'normal');
-    //         pdf.text(`Supplier: ${order.supplier?.perusahaan || '-'} (${order.supplier?.cp || '-'})`, margin, yPos);
-    //         yPos += 5;
-    //         pdf.text(`Total: ${formatCurrencyPDF(order.total_dibayarkan)}`, margin, yPos);
-    //         yPos += 10;
-            
-    //         // Prepare items table
-    //         const headers = ['PRODUK', 'QTY', 'HARGA SATUAN', 'SUBTOTAL'];
-    //         const body = (order.item_pesanan_pembelian || []).map(item => {
-    //             const productName = item.varian?.produk?.nama 
-    //                 ? `${item.varian.produk.nama} - ${item.varian.varian || ''}` 
-    //                 : 'Unknown Product';
-    //             return [
-    //                 productName,
-    //                 item.qty_dipesan || 0,
-    //                 formatCurrencyPDF(item.harga_beli || 0),
-    //                 formatCurrencyPDF((item.qty_dipesan || 0) * (item.harga_beli || 0))
-    //             ];
-    //         });
-            
-    //         // Generate items table
-    //         pdf.autoTable({
-    //             head: [headers],
-    //             body: body,
-    //             startY: yPos,
-    //             margin: {left: margin, right: margin},
-    //             headStyles: {
-    //                 fillColor: [220, 220, 220],
-    //                 textColor: 0,
-    //                 fontStyle: 'bold'
-    //             },
-    //             columnStyles: {
-    //                 1: {halign: 'right'},
-    //                 2: {halign: 'right'},
-    //                 3: {halign: 'right'}
-    //             },
-    //             styles: {
-    //                 fontSize: 9,
-    //                 cellPadding: 3
-    //             },
-    //             didDrawPage: (data) => {
-    //                 yPos = data.cursor.y + 10;
-    //             }
-    //         });
-            
-    //         yPos += 15; // Add space between orders
-            
-    //         // Add page break if needed
-    //         if (yPos > 250 && orderIndex < data.length - 1) {
-    //             pdf.addPage();
-    //             yPos = 30;
-    //         }
-    //     });
-        
-    //     // Add total at the end
-    //     pdf.setFont('helvetica', 'bold');
-    //     pdf.text(`Total Pembelian: ${formatCurrencyPDF(total)}`, margin, yPos);
-    // }
-    
-    // function generateTransactionTable(pdf, data, yPos, margin, contactType) {
-    //     const isPurchase = contactType === 'Supplier';
-    //     const prefix = isPurchase ? 'PO' : 'SO';
-    //     const contactLabel = isPurchase ? 'Supplier' : 'Pelanggan';
-
-    //     const headers = [
-    //         'NO', 
-    //         'TANGGAL', 
-    //         `ID ${prefix}`, 
-    //         contactLabel.toUpperCase(), 
-    //         'TOTAL ITEMS', 
-    //         'TOTAL (Rp)'
-    //     ];
-        
-    //     const body = data.map((item, index) => [
-    //         index + 1,
-    //         formatDate(item.tanggal_pesan),
-    //         `${prefix}-${item.id.toString().padStart(4, '0')}`,
-    //         isPurchase 
-    //             ? `${item.supplier?.perusahaan || '-'}\n${item.supplier?.cp || ''}`
-    //             : item.bakul?.nama || 'Walk-in',
-    //         item.total_items || 0,
-    //         formatCurrencyPDF(item.total_dibayarkan)
-    //     ]);
-        
-    //     // Add total row
-    //     const totalAmount = data.reduce((sum, item) => sum + (item.total_dibayarkan || 0), 0);
-    //     const totalItems = data.reduce((sum, item) => sum + (item.total_items || 0), 0);
-    //     body.push(['', '', '', 'TOTAL', totalItems, formatCurrencyPDF(totalAmount)]);
-        
-    //     pdf.autoTable({
-    //         head: [headers],
-    //         body: body,
-    //         startY: yPos,
-    //         margin: {left: margin, right: margin},
-    //         headStyles: {
-    //             fillColor: [50, 50, 50],       // Dark gray header (almost black)
-    //             textColor: 255,                 // White text
-    //             fontStyle: 'bold'
-    //         },
-    //         columnStyles: {
-    //             4: {halign: 'right'},
-    //             5: {halign: 'right'},
-    //             [body.length-1]: {
-    //                 fontStyle: 'bold', 
-    //                 fillColor: [220, 220, 220], // Light gray for total row
-    //                 textColor: 0,               // Black text
-    //                 halign: 'right'
-    //             }
-    //         },
-    //         styles: {
-    //             fontSize: 10,
-    //             cellPadding: 4,
-    //             overflow: 'linebreak',
-    //             textColor: 0,                   // Black text for all cells
-    //             fillColor: 255                   // White background for data rows
-    //         },
-    //         didParseCell: (data) => {
-    //             if (data.row.index === body.length-1) {
-    //                 data.cell.styles.fontStyle = 'bold';
-    //                 if (data.column.index === 3) {
-    //                     data.cell.colSpan = 2;
-    //                     data.cell.halign = 'left';
-    //                 }
-    //             }
-    //         }
-    //     });
-    // }
-    
     function generateStockCardTable(pdf, data, yPos, margin) {
+        // Add report title with date range
+        pdf.setFontSize(14);
+        pdf.setTextColor(0);
+        // pdf.text('LAPORAN KARTU STOK', 105, yPos, {align: 'center'});
+        // yPos += 8;
+        
+        // Add date range
+        // const startDate = document.getElementById('startDate').value;
+        // const endDate = document.getElementById('endDate').value;
+        // const start = new Date(startDate).toLocaleDateString('id-ID');
+        // const end = new Date(endDate).toLocaleDateString('id-ID');
+        // pdf.setFontSize(11);
+        // pdf.text(`Periode: ${start} - ${end}`, 105, yPos, {align: 'center'});
+        // yPos += 15;
+
+        // Prepare table data with all columns
+        const body = data.map(item => [
+            `VAR${item.id.toString().padStart(4, '0')}`,
+            item.name,
+            formatNumber(item.initialStock),
+            formatNumber(item.purchases),
+            formatNumber(item.adjustmentsIn),
+            formatNumber(item.sales),
+            formatNumber(item.adjustmentsOut),
+            formatNumber(item.finalStock),
+            formatCurrencyPDF(item.hpp)
+        ]);
+
+        // Generate table
         pdf.autoTable({
-            head: [['KODE', 'NAMA BARANG', 'STOK AWAL', 'PEMBELIAN', 'PENJUALAN', 'STOK AKHIR']],
-            body: data.map(item => [
-                `VAR${item.id.toString().padStart(4, '0')}`,
-                item.name,
-                item.initialStock,
-                item.purchases,
-                item.sales,
-                item.finalStock
-            ]),
+            head: [
+                [
+                    {content: 'KODE', rowSpan: 2},
+                    {content: 'BARANG', rowSpan: 2},
+                    {content: 'AWAL', rowSpan: 2},
+                    {content: 'MASUK', colSpan: 2},
+                    {content: 'KELUAR', colSpan: 2},
+                    {content: 'AKHIR', rowSpan: 2},
+                    {content: 'HPP', rowSpan: 2}
+                ],
+                [
+                    'PEMBELIAN',
+                    'PENYESUAIAN',
+                    'PENJUALAN',
+                    'PENYESUAIAN'
+                ]
+            ],
+            body: body,
             startY: yPos,
             margin: {left: margin, right: margin},
+            tableWidth: 'auto',
             headStyles: {
-                fillColor: [13, 71, 161],
-                textColor: 255,
-                fontStyle: 'bold'
+                fillColor: [255,255,255],
+                textColor: 0,
+                fontStyle: 'bold',
+                valign: 'middle',
+                halign: 'center'
             },
             columnStyles: {
-                2: {halign: 'right'},
-                3: {halign: 'right'},
-                4: {halign: 'right'},
-                5: {halign: 'right'}
+                0: {cellWidth: 'auto', halign: 'left'}, // Kode
+                1: {cellWidth: 'auto', halign: 'left'}, // Nama Barang
+                2: {cellWidth: 'auto', halign: 'right'}, // Stok Awal
+                3: {cellWidth: 'auto', halign: 'right'}, // Pembelian
+                4: {cellWidth: 'auto', halign: 'right'}, // Penyesuaian Masuk
+                5: {cellWidth: 'auto', halign: 'right'}, // Penjualan
+                6: {cellWidth: 'auto', halign: 'right'}, // Penyesuaian Keluar
+                7: {cellWidth: 'auto', halign: 'right'}, // Stok Akhir
+                8: {cellWidth: 'auto', halign: 'right'}  // HPP
             },
             styles: {
                 fontSize: 9,
-                cellPadding: 3
+                cellPadding: 3,
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0]
+            },
+            bodyStyles: {
+                textColor: [0, 0, 0],
+                valign: 'middle'
+            },
+            alternateRowStyles: {
+                fillColor: [255, 255, 255]
             }
         });
+
+        // Helper function to format numbers with thousand separators
+        function formatNumber(num) {
+            return new Intl.NumberFormat('id-ID').format(num);
+        }
+
+        // Helper function to format currency for PDF
+        function formatCurrencyPDF(amount) {
+            if (isNaN(amount) || amount === null) return '-';
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(amount).replace('Rp', '').trim();
+        }
+
+        return pdf;
     }
     
     function generateStockOpname(pdf, data, startY = 30, margin = 14) {
-        const { logs } = data;
+        const { logs, adjustmentsByLog } = data;
         
-        // Set document styles
         pdf.setFont('helvetica');
         
-        // 1. Title
-        pdf.setFontSize(16);
-        pdf.setTextColor(0, 0, 128);
-        pdf.text(`LAPORAN STOCK OPNAME`, 105, startY, { align: 'center' });
+        // Enable jsPDF text wrapping
+        pdf.setFontSize(9); // Set base font size
+        const lineHeight = 5; // Adjust line height for wrapped text
         
-        // 2. Table with properly merged rows
-        const tableY = startY + 25;
-        
-        // Prepare data for autoTable with correct merged cells
         const body = [];
         logs.forEach(log => {
-            log.item_opname.forEach((item, index) => {
-                const difference = item.stok - (item.varian?.jumlah_stok || 0);
-                const row = [
-                    index === 0 ? { 
-                        content: log.id.toString(), 
-                        rowSpan: log.item_opname.length 
-                    } : '',
-                    index === 0 ? { 
-                        content: formatDate(log.tanggal), 
-                        rowSpan: log.item_opname.length 
-                    } : '',
-                    index === 0 ? { 
-                        content: log.status_log, 
-                        rowSpan: log.item_opname.length 
-                    } : '',
+            log.item_opname.forEach(item => {
+                const adjustment = (adjustmentsByLog[log.id] || []).find(adj => adj.id === item.id);
+                const adjustmentValue = adjustment ? 
+                    (adjustment.tipe_riwayat === 'penyesuaian_masuk' ? 
+                    `+${adjustment.qty}` : 
+                    `-${adjustment.qty}`) : 
+                    '0';
+                
+                const productName = `${item.varian?.produk?.nama || ''} - ${item.varian?.varian || ''}`;
+                
+                body.push([
+                    log.id.toString(),
+                    formatShortDate(log.tanggal),
+                    log.status_log,
                     `VAR${item.id_varian.toString().padStart(4, '0')}`,
-                    item.status_item_log,
-                    { content: (item.varian?.jumlah_stok || 0).toString(), styles: { halign: 'right' } },
-                    { content: item.stok.toString(), styles: { halign: 'right' } },
                     { 
-                        content: difference === 0 ? '0' : (difference > 0 ? `+${difference}` : difference.toString()),
+                        content: productName,
+                        styles: { 
+                            cellWidth: 40,  // Fixed width for wrapping
+                            valign: 'middle'
+                        }
+                    },
+                    item.status_item_log,
+                    { 
+                        content: item.stok.toString(), 
+                        styles: { halign: 'right' } 
+                    },
+                    { 
+                        content: item.status_item_log === 'disesuaikan' ? adjustmentValue : '0',
                         styles: { 
                             halign: 'right',
-                            textColor: difference > 0 ? [0, 128, 0] : difference < 0 ? [255, 0, 0] : [0, 0, 0]
+                            textColor: adjustmentValue.startsWith('+') ? [0, 128, 0] : 
+                                    adjustmentValue.startsWith('-') ? [255, 0, 0] : [0, 0, 0]
                         }
                     }
-                ];
-                body.push(row);
+                ]);
             });
         });
-    
+
         pdf.autoTable({
-            head: [['ID LOG', 'TANGGAL', 'STATUS LOG', 'ID ITEM', 'STATUS ITEM', 'STOK SISTEM', 'STOK FISIK', 'SELISIH']],
+            head: [['ID', 'TANGGAL', 'STATUS', 'ITEM', 'PRODUK', 'STATUS', 'STOK', 'PENY.']],
             body: body,
-            startY: tableY,
+            startY: startY + 2,
             margin: { left: margin, right: margin },
+            tableWidth: 'auto',
+            styles: {
+                fontSize: 10,
+                cellPadding: 2,
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0],
+                lineHeight: lineHeight  // Set uniform line height
+            },
             headStyles: {
-                fillColor: [13, 71, 161],
-                textColor: 255,
-                fontStyle: 'bold'
+                fillColor: [255,255,255],
+                textColor: 0,
+                fontStyle: 'bold',
+                halign: 'center'
+            },
+            bodyStyles: {
+                valign: 'middle',
+                textColor: 0,
             },
             columnStyles: {
-                0: { cellWidth: 20 },  // ID Log
-                1: { cellWidth: 30 },  // Tanggal
-                2: { cellWidth: 25 },  // Status Log
-                3: { cellWidth: 25 },  // ID Item
-                4: { cellWidth: 30 },  // Status Item
-                5: { cellWidth: 25, halign: 'right' },  // Stok Sistem
-                6: { cellWidth: 25, halign: 'right' },  // Stok Fisik
-                7: { cellWidth: 20, halign: 'right' }   // Selisih
+                0: { cellWidth: 10 },  // ID
+                1: { cellWidth: 25 },  // Date
+                2: { cellWidth: 20 },  // Status
+                3: { cellWidth: 20 },  // Item ID
+                4: { cellWidth: 45 },  // Product (will wrap)
+                5: { cellWidth: 25 },  // Item Status
+                6: { cellWidth: 15 },  // Stock
+                7: { cellWidth: 15 }   // Adjustment
             },
-            didDrawPage: function(data) {
-                // Add footer to each page
-                addFooter(pdf, margin);
+            alternateRowStyles: {
+                fillColor: [255, 255, 255]
             },
-            // Handle merged cells
-            createdCell: function(cell, data) {
-                if (cell.raw !== null && typeof cell.raw === 'object' && cell.raw.rowSpan) {
-                    cell.rowSpan = cell.raw.rowSpan;
-                    cell.content = cell.raw.content;
-                }
-            },
-            // Ensure empty cells are properly rendered
-            drawCell: function(cell, data) {
-                if (cell.raw === '') {
-                    data.table.cell(cell.x, cell.y, cell.width, cell.height, '', cell.styles);
-                    return false;
+            didDrawCell: (data) => {
+                if (data.column.index === 4 && data.cell.raw) { // Product name column
+                    const text = data.cell.raw;
+                    const cellWidth = data.cell.width - 4; // Account for padding
+                    
+                    // Split text into multiple lines if needed
+                    const lines = pdf.splitTextToSize(text, cellWidth);
+                    if (lines.length > 1) {
+                        data.cell.text = lines;
+                        data.row.height = Math.max(data.row.height, lines.length * lineHeight);
+                    }
                 }
             }
         });
-    
+
+        function formatShortDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('id-ID', {
+                day: '2-digit',
+                month: '2-digit',
+                year: '2-digit'
+            });
+        }
+
         return pdf;
     }
     

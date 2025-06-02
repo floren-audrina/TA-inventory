@@ -112,15 +112,17 @@
 </head>
 <body>
     <div id="navbar"></div>
-    <script>
+    <script type="module">
+        import navbarUrl from './src/navbar.js?url';
+
         fetch("navbar.html")
             .then(response => response.text())
             .then(html => {
-                document.getElementById("navbar").innerHTML = html;
-                const script = document.createElement('script');
-                script.src = '../src/navbar.js';
-                script.type = 'module';
-                document.body.appendChild(script);
+            document.getElementById("navbar").innerHTML = html;
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = navbarUrl;
+            document.body.appendChild(script);
             })
             .catch(error => console.error('Error loading navbar:', error));
     </script>
@@ -264,6 +266,6 @@
         <!-- Toast messages will be dynamically inserted here -->
     </div>
 
-    <script type="module" src="../src/product.js"></script>
+    <script type="module" src="./src/product.js"></script>
 </body>
 </html>

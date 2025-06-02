@@ -1,10 +1,48 @@
 import supabase from './db_conn.js';
 import { processEntry } from './import.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 // Global variables
 let stockOpnameModal;
 
 // Utility functions
+function toLocalISOString(date) {
+    // Convert date to local timezone (Indonesia UTC+7) and format as ISO string
+    const offset = date.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(date.getTime() - offset).toISOString();
+    return localISOTime.slice(0, 16); // For datetime-local input
+}
+
+function formatDateTime(datetimeStr) {
+    if (!datetimeStr) return null;
+    // Convert "YYYY-MM-DDTHH:MM" to ISO string (UTC)
+    return new Date(datetimeStr).toISOString();
+}
+
+function formatLocalDateTime(date) {
+    // Format date in Indonesian locale with time
+    return date.toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatLocalDate(date) {
+    // Format date in Indonesian locale without time
+    return date.toLocaleDateString('id-ID', {
+        timeZone: 'Asia/Jakarta'
+    });
+}
+
 function showToast(message, type = 'success') {
     const toastContainer = document.getElementById('toastContainer');
     if (!toastContainer) {
@@ -52,7 +90,10 @@ async function prepareModal(mode = 'add', logData = null) {
     modal.dataset.mode = mode;
     
     // Reset form
-    document.getElementById('tanggal').valueAsDate = new Date();
+    const tanggalInput = document.getElementById('tanggal');
+    // Set to current datetime in local timezone (Indonesia)
+    tanggalInput.value = toLocalISOString(new Date());
+    
     document.querySelector('#productsTable tbody').innerHTML = '';
     
     // Set modal title and button text
@@ -63,11 +104,11 @@ async function prepareModal(mode = 'add', logData = null) {
         modalTitle.textContent = 'Edit Stock Opname';
         submitBtn.textContent = 'Update';
         modal.dataset.logId = logData.id;
-        // Add this line to store the log data
         modal.dataset.logData = JSON.stringify(logData);
         
-        // Set the date
-        document.getElementById('tanggal').valueAsDate = new Date(logData.tanggal);
+        // Set the datetime - convert UTC timestamp to local datetime
+        const logDate = new Date(logData.tanggal);
+        tanggalInput.value = toLocalISOString(logDate);
         
         // Load products with existing items checked
         await loadProductsIntoModal(true, logData);
@@ -106,15 +147,15 @@ async function loadProductsIntoModal(isEditMode = false, logData = null, page = 
                 id,
                 varian,
                 jumlah_stok,
-                produk:id_produk(
-                    id,
-                    nama,
-                    subkategori:id_subkategori(
-                        subkategori,
-                        kategori:id_kategori(kategori)
-                    )
+                produk!inner(
+                id,
+                nama,
+                subkategori:id_subkategori(
+                    subkategori,
+                    kategori:id_kategori(kategori)
+                )
                 )`, { count: 'exact' })
-            .order('id_produk', { ascending: true })
+            .order('produk(nama)', { ascending: true })  // Modified syntax
             .range(offset, offset + pageSize - 1);
 
         if (error) throw error;
@@ -303,7 +344,7 @@ async function submitNewStockOpname() {
         const { data: logData, error: logError } = await supabase
             .from('log_opname')
             .insert({
-                tanggal: tanggalInput.value,
+                tanggal: formatDateTime(tanggalInput.value),
                 status_log: 'draft',
                 waktu_dibuat: new Date().toISOString()
             })
@@ -365,7 +406,7 @@ async function submitEditStockOpname() {
         const { error: logError } = await supabase
             .from('log_opname')
             .update({
-                tanggal: tanggalInput.value
+                tanggal: formatDateTime(tanggalInput.value)
             })
             .eq('id', logId);
 
@@ -403,7 +444,9 @@ async function submitEditStockOpname() {
         // Success - close modal and refresh
         showToast('Perubahan stock opname berhasil disimpan');
         stockOpnameModal.hide();
-        await checkActiveLog();
+        
+        // Specifically reload the active log with its items
+        await renderActiveLog();  // This will force a refresh of the item list
 
     } catch (error) {
         console.error('Error editing stock opname:', error);
@@ -516,11 +559,11 @@ async function renderActiveLog() {
         const hasPending = await hasPendingItems(activeLog.id);
 
         logContainer.innerHTML = `
-            <div class="card">
+            <div class="card" data-log-id="${activeLog.id}">  <!-- Add data-log-id here -->
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-2">
                         <div>
-                            <strong>Tanggal:</strong> ${new Date(activeLog.tanggal).toLocaleDateString()}
+                            <strong>Tanggal:</strong> ${formatLocalDateTime(new Date(activeLog.tanggal))}
                             <strong class="ms-1 me-1">|</strong>
                             <strong>Status:</strong> ${activeLog.status_log}
                             <button id="editLogBtn" class="btn btn-sm btn-outline-primary ms-2">✏️ Edit</button>
@@ -731,7 +774,10 @@ function setupMatchButtonListeners() {
             const systemStock = parseInt(row.querySelector('td:nth-child(3)').textContent) || 0;
             const physicalStock = parseInt(input.value) || 0;
             const stockDifference = physicalStock - systemStock;
-            console.log("selisih: ",stockDifference)
+            
+            // Get the log ID from the parent container
+            const logContainer = document.getElementById('active');
+            const logId = logContainer.querySelector('.card')?.dataset.logId;
             
             // Skip if no adjustment needed
             if (stockDifference === 0) {
@@ -752,7 +798,7 @@ function setupMatchButtonListeners() {
                 await processEntry({
                     variantId: variantId,
                     type: adjustmentType,
-                    id: itemId,
+                    id: logId,  // Now passing logId instead of itemId
                     quantity: Math.abs(stockDifference), // Use absolute value
                     price: 0, // Typically 0 for adjustments
                     date: new Date().toISOString()
@@ -855,6 +901,8 @@ async function checkFinalizeButtonState() {
     const hasPending = await hasPendingItems(logId);
     finalizeBtn.disabled = hasPending;
     finalizeBtn.title = hasPending ? "Masih ada item yang belum disesuaikan" : "";
+
+    setupFinalizeButton(logId, hasPending);
 }
 
 function setupFinalizeButton(logId, isDisabled) {
@@ -971,10 +1019,10 @@ async function loadRiwayatData() {
         completedLogs.forEach(log => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${new Date(log.tanggal).toLocaleDateString()}</td>
+                <td>${formatLocalDate(new Date(log.tanggal))}</td>
                 <td><span class="badge bg-success">${log.status_log}</span></td>
-                <td>${new Date(log.waktu_dibuat).toLocaleString()}</td>
-                <td>${log.waktu_selesai ? new Date(log.waktu_selesai).toLocaleString() : '-'}</td>
+                <td>${formatLocalDateTime(new Date(log.waktu_dibuat))}</td>
+                <td>${log.waktu_penyelesaian ? formatLocalDateTime(new Date(log.waktu_penyelesaian)) : '-'}</td>
                 <td>${log.items.length} item</td>
                 <td>
                     <button class="btn btn-sm btn-outline-primary btn-view-details" 
@@ -1021,10 +1069,10 @@ function showRiwayatDetails(logData) {
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
-                            <strong>Tanggal:</strong> ${new Date(logData.tanggal).toLocaleDateString()}<br>
+                            <strong>Tanggal:</strong> ${formatLocalDate(new Date(logData.tanggal))}<br>
                             <strong>Status:</strong> <span class="badge bg-success">${logData.status_log}</span><br>
-                            <strong>Waktu Dibuat:</strong> ${new Date(logData.waktu_dibuat).toLocaleString()}<br>
-                            <strong>Waktu Selesai:</strong> ${new Date(logData.waktu_penyelesaian).toLocaleString()}
+                            <strong>Waktu Dibuat:</strong> ${formatLocalDateTime(new Date(logData.waktu_dibuat))}<br>
+                            <strong>Waktu Selesai:</strong> ${logData.waktu_penyelesaian ? formatLocalDateTime(new Date(logData.waktu_penyelesaian)) : '-'}
                         </div>
                         <table class="table table-bordered table-sm">
                             <thead class="table-light">

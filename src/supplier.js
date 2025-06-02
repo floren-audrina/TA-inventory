@@ -1,4 +1,10 @@
 import supabase from './db_conn.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 let supplierTable;
 
@@ -36,6 +42,7 @@ function initializeDataTable() {
                 data: null,
                 render: function(data, type, row) {
                     return `
+                        <button class="btn btn-info btn-sm" onclick="showSupplierProducts(${row.id})">Produk</button>
                         <button class="btn btn-primary btn-sm" onclick="window.editSupplier(${row.id})">Edit</button>
                         <button class="btn btn-danger btn-sm" onclick="window.deleteSupplier(${row.id})">Delete</button>
                     `;
@@ -311,13 +318,73 @@ async function deleteSupplier(supplierId) {
 }
 
 // Function to fetch and display suppliers
-async function fetchSuppliers() {
-    // const supplierTableBody = document.getElementById('supplierTableBody');
+// DATA TABLE
+// async function fetchSuppliers() {
+//     // const supplierTableBody = document.getElementById('supplierTableBody');
 
-    // if (!supplierTableBody) return;
+//     // if (!supplierTableBody) return;
+
+//     try {
+//         $('#supplierTableBody').html(`
+//             <tr>
+//                 <td colspan="6" class="text-center">
+//                     <div class="spinner-border spinner-border-sm" role="status">
+//                         <span class="visually-hidden">Loading...</span>
+//                     </div>
+//                     Memuat supplier...
+//                 </td>
+//             </tr>`);
+
+//         // Fetch data from Supabase
+//         const { data, error } = await supabase
+//             .from('supplier')
+//             .select(`
+//                 id,
+//                 perusahaan,
+//                 cp,
+//                 no_hp,
+//                 kota: id_kota (kota)
+//             `);
+
+//         if (error) throw error;
+
+//         // Format data for DataTables
+//         const formattedData = data.map(supplier => ({
+//             id: supplier.id,
+//             perusahaan: supplier.perusahaan || '-',
+//             cp: supplier.cp,
+//             no_hp: supplier.no_hp || '-',
+//             kota: supplier.kota?.kota || '-',
+//             id: supplier.id // Needed for action buttons
+//         }));
+
+//         // Clear and redraw table
+//         if (supplierTable) {
+//             supplierTable.clear().rows.add(formattedData).draw();
+//         } else {
+//             initializeDataTable();
+//             supplierTable.rows.add(formattedData).draw();
+//         }
+
+//     } catch (error) {
+//         console.error('Error fetching suppliers:', error.message);
+//         showToast('Failed to load suppliers. Please try again.', 'error');
+//         $('#supplierTableBody').html(`
+//             <tr>
+//                 <td colspan="6" class="text-center text-danger">
+//                     Gagal memuat data supplier
+//                 </td>
+//             </tr>`);
+//     }
+// }
+
+async function fetchSuppliers() {
+    const supplierTableBody = document.getElementById('supplierTableBody');
+
+    if (!supplierTableBody) return;
 
     try {
-        $('#supplierTableBody').html(`
+        supplierTableBody.innerHTML = `
             <tr>
                 <td colspan="6" class="text-center">
                     <div class="spinner-border spinner-border-sm" role="status">
@@ -325,9 +392,8 @@ async function fetchSuppliers() {
                     </div>
                     Memuat supplier...
                 </td>
-            </tr>`);
+            </tr>`;
 
-        // Fetch data from Supabase
         const { data, error } = await supabase
             .from('supplier')
             .select(`
@@ -340,33 +406,41 @@ async function fetchSuppliers() {
 
         if (error) throw error;
 
-        // Format data for DataTables
-        const formattedData = data.map(supplier => ({
-            id: supplier.id,
-            perusahaan: supplier.perusahaan || '-',
-            cp: supplier.cp,
-            no_hp: supplier.no_hp || '-',
-            kota: supplier.kota?.kota || '-',
-            id: supplier.id // Needed for action buttons
-        }));
+        // Clear existing table rows
+        supplierTableBody.innerHTML = '';
 
-        // Clear and redraw table
-        if (supplierTable) {
-            supplierTable.clear().rows.add(formattedData).draw();
-        } else {
-            initializeDataTable();
-            supplierTable.rows.add(formattedData).draw();
+        if (!data || data.length === 0) {
+            modalProductTable.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        Tidak ada supplier ditemukan
+                    </td>
+                </tr>`;
+            return;
         }
 
-    } catch (error) {
-        console.error('Error fetching suppliers:', error.message);
-        showToast('Failed to load suppliers. Please try again.', 'error');
-        $('#supplierTableBody').html(`
-            <tr>
-                <td colspan="6" class="text-center text-danger">
-                    Gagal memuat data supplier
+        // Populate the table with bakul data
+        data.forEach((supplier) => {
+            const row = document.createElement('tr');
+
+            row.innerHTML = `
+                <td>${supplier.id}</td>
+                <td>${supplier.perusahaan ? supplier.perusahaan : '-'}</td>
+                <td>${supplier.cp ? supplier.cp : '-'}</td>
+                <td>${supplier.no_hp ? supplier.no_hp : '-'}</td> 
+                <td>${supplier.kota?.kota ? supplier.kota.kota : '-'}</td> 
+                <td>
+                    <button class="btn btn-info btn-sm" onclick="showSupplierProducts(${supplier.id})">Produk</button>
+                    <button class="btn btn-primary btn-sm" onclick="editSupplier(${supplier.id})">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSupplier(${supplier.id})">Delete</button>
                 </td>
-            </tr>`);
+            `;
+
+            supplierTableBody.appendChild(row);
+        });
+    } catch (error) {
+        console.error('Error fetching supplier:', error.message);
+        showToast('Gagal menampilkan data supplier, silahkan coba lagi.', 'error');
     }
 }
 
@@ -432,17 +506,31 @@ async function updateFilterUI() {
 // Load kota for filter
 async function loadKotaForFilter() {
     try {
-        const { data, error } = await supabase
+        // First get distinct kota IDs from suppliers
+        const { data: supplierKotas, error: supplierError } = await supabase
+            .from('supplier')
+            .select('id_kota') // Change to your actual column name
+            .not('id_kota', 'is', null) // Exclude null values
+            .order('id_kota', { ascending: true });
+
+        if (supplierError) throw supplierError;
+
+        // Extract just the kota IDs
+        const kotaIds = [...new Set(supplierKotas.map(item => item.id_kota))];
+
+        // Now get kota details only for these IDs
+        const { data: kotaData, error: kotaError } = await supabase
             .from('kota')
             .select('id, kota')
+            .in('id', kotaIds) // Only cities used by suppliers
             .order('kota', { ascending: true });
 
-        if (error) throw error;
+        if (kotaError) throw kotaError;
         
         const select = document.getElementById('dropdownKota');
         select.innerHTML = '<option value="">Pilih Kota</option>';
         
-        data.forEach(kota => {
+        kotaData.forEach(kota => {
             const option = document.createElement('option');
             option.value = kota.id;
             option.textContent = kota.kota;
@@ -535,147 +623,217 @@ async function filterSuppliers() {
 }
 
 // search functions
-// async function performSearch() {
-//     const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+async function performSearch() {
+    const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
     
-//     try {
-//         const tbody = document.getElementById('supplierTableBody');
-//         tbody.innerHTML = `
-//             <tr>
-//                 <td colspan="6" class="text-center">
-//                     <div class="spinner-border spinner-border-sm" role="status">
-//                         <span class="visually-hidden">Loading...</span>
-//                     </div>
-//                     Memuat supplier...
-//                 </td>
-//             </tr>`;
+    try {
+        const tbody = document.getElementById('supplierTableBody');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Memuat supplier...
+                </td>
+            </tr>`;
 
-//         // Base query with kota filter if active
-//         let baseQuery = supabase
-//             .from('supplier')
-//             .select(`
-//                 id, 
-//                 perusahaan, 
-//                 cp, 
-//                 no_hp,
-//                 kota:id_kota(kota)
-//             `)
-//             .order('id', { ascending: true });
+        // Base query with kota filter if active
+        let baseQuery = supabase
+            .from('supplier')
+            .select(`
+                id, 
+                perusahaan, 
+                cp, 
+                no_hp,
+                kota:id_kota(kota)
+            `)
+            .order('id', { ascending: true });
 
-//         // Apply kota filter if active
-//         if (activeFilters.type === 'kota' && activeFilters.kota) {
-//             baseQuery = baseQuery.eq('id_kota', activeFilters.kota);
-//         }
+        // Apply kota filter if active
+        if (activeFilters.type === 'kota' && activeFilters.kota) {
+            baseQuery = baseQuery.eq('id_kota', activeFilters.kota);
+        }
 
-//         // 1. Search suppliers by direct fields (perusahaan, cp, no_hp)
-//         const directSearchQuery = baseQuery;
-//         if (searchTerm) {
-//             directSearchQuery.or(`perusahaan.ilike.%${searchTerm}%,cp.ilike.%${searchTerm}%,no_hp.ilike.%${searchTerm}%`);
-//         }
-//         const { data: suppliersDirect, error: directError } = await directSearchQuery;
+        // 1. Search suppliers by direct fields (perusahaan, cp, no_hp)
+        const directSearchQuery = baseQuery;
+        if (searchTerm) {
+            directSearchQuery.or(`perusahaan.ilike.%${searchTerm}%,cp.ilike.%${searchTerm}%,no_hp.ilike.%${searchTerm}%`);
+        }
+        const { data: suppliersDirect, error: directError } = await directSearchQuery;
 
-//         // 2. Search suppliers by kota name (only if searching and no kota filter already applied)
-//         let suppliersByKota = [];
-//         if (searchTerm && !(activeFilters.type === 'kota' && activeFilters.kota)) {
-//             const { data: kotaResults, error: kotaError } = await supabase
-//                 .from('kota')
-//                 .select('id, kota')
-//                 .ilike('kota', `%${searchTerm}%`);
+        // 2. Search suppliers by kota name (only if searching and no kota filter already applied)
+        let suppliersByKota = [];
+        if (searchTerm && !(activeFilters.type === 'kota' && activeFilters.kota)) {
+            const { data: kotaResults, error: kotaError } = await supabase
+                .from('kota')
+                .select('id, kota')
+                .ilike('kota', `%${searchTerm}%`);
 
-//             if (!kotaError && kotaResults?.length > 0) {
-//                 const kotaIds = kotaResults.map(k => k.id);
-//                 const { data, error } = await baseQuery.in('id_kota', kotaIds);
-//                 if (!error) suppliersByKota = data || [];
-//             }
-//         }
+            if (!kotaError && kotaResults?.length > 0) {
+                const kotaIds = kotaResults.map(k => k.id);
+                const { data, error } = await baseQuery.in('id_kota', kotaIds);
+                if (!error) suppliersByKota = data || [];
+            }
+        }
 
-//         // Combine results (if searching) or use direct results (if just filtering)
-//         let resultsToDisplay;
-//         if (searchTerm) {
-//             const combinedResults = [
-//                 ...(suppliersDirect || []),
-//                 ...suppliersByKota
-//             ];
-//             resultsToDisplay = combinedResults.reduce((acc, supplier) => {
-//                 if (!acc.some(s => s.id === supplier.id)) {
-//                     acc.push(supplier);
-//                 }
-//                 return acc;
-//             }, []);
-//         } else {
-//             resultsToDisplay = suppliersDirect || [];
-//         }
+        // Combine results (if searching) or use direct results (if just filtering)
+        let resultsToDisplay;
+        if (searchTerm) {
+            const combinedResults = [
+                ...(suppliersDirect || []),
+                ...suppliersByKota
+            ];
+            resultsToDisplay = combinedResults.reduce((acc, supplier) => {
+                if (!acc.some(s => s.id === supplier.id)) {
+                    acc.push(supplier);
+                }
+                return acc;
+            }, []);
+        } else {
+            resultsToDisplay = suppliersDirect || [];
+        }
 
-//         // Update the table with final results
-//         updateSupplierTable(resultsToDisplay);
+        // Update the table with final results
+        updateSupplierTable(resultsToDisplay);
 
-//     } catch (error) {
-//         console.error('Error searching suppliers:', error);
-//         showToast('Gagal melakukan pencarian supplier', 'error');
-//         document.getElementById('supplierTableBody').innerHTML = `
-//             <tr>
-//                 <td colspan="6" class="text-center text-danger">
-//                     Gagal memuat data supplier
-//                 </td>
-//             </tr>`;
-//     }
-// }
+    } catch (error) {
+        console.error('Error searching suppliers:', error);
+        showToast('Gagal melakukan pencarian supplier', 'error');
+        document.getElementById('supplierTableBody').innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-danger">
+                    Gagal memuat data supplier
+                </td>
+            </tr>`;
+    }
+}
 
-// // Update supplier table display
-// function updateSupplierTable(suppliers) {
-//     const tbody = document.getElementById('supplierTableBody');
-//     tbody.innerHTML = '';
+// Update supplier table display
+function updateSupplierTable(suppliers) {
+    const tbody = document.getElementById('supplierTableBody');
+    tbody.innerHTML = '';
 
-//     if (!suppliers || suppliers.length === 0) {
-//         tbody.innerHTML = `
-//             <tr>
-//                 <td colspan="6" class="text-center text-muted">
-//                     Tidak ada supplier yang cocok dengan pencarian
-//                 </td>
-//             </tr>`;
-//         return;
-//     }
+    if (!suppliers || suppliers.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-muted">
+                    Tidak ada supplier yang cocok dengan pencarian
+                </td>
+            </tr>`;
+        return;
+    }
 
-//     suppliers.forEach(supplier => {
-//         const row = document.createElement('tr');
-//         row.innerHTML = `
-//             <td>${supplier.id}</td>
-//             <td>${supplier.perusahaan || '-'}</td>
-//             <td>${supplier.cp}</td>
-//             <td>${supplier.no_hp || '-'}</td>
-//             <td>${supplier.kota?.kota || '-'}</td>
-//             <td>
-//                 <button class="btn btn-primary btn-sm" onclick="editSupplier(${supplier.id})">Edit</button>
-//                 <button class="btn btn-danger btn-sm" onclick="deleteSupplier(${supplier.id})">Delete</button>
-//             </td>
-//         `;
-//         tbody.appendChild(row);
-//     });
-// }
+    suppliers.forEach(supplier => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${supplier.id}</td>
+            <td>${supplier.perusahaan || '-'}</td>
+            <td>${supplier.cp}</td>
+            <td>${supplier.no_hp || '-'}</td>
+            <td>${supplier.kota?.kota || '-'}</td>
+            <td>
+                <button class="btn btn-info btn-sm" onclick="showSupplierProducts(${supplier.id})">Produk</button>
+                <button class="btn btn-primary btn-sm" onclick="editSupplier(${supplier.id})">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteSupplier(${supplier.id})">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
 
-// // Search icon and clear functions
-// function updateSearchIcon() {
-//     const searchInput = document.getElementById('searchInput');
-//     const searchIcon = document.getElementById('searchIcon');
+// Search icon and clear functions
+function updateSearchIcon() {
+    const searchInput = document.getElementById('searchInput');
+    const searchIcon = document.getElementById('searchIcon');
     
-//     if (searchInput.value.trim()) {
-//         searchIcon.innerHTML = `
-//             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x" viewBox="0 0 16 16">
-//                 <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-//             </svg>`;
-//     } else {
-//         searchIcon.innerHTML = `
-//             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
-//                 <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-//             </svg>`;
-//     }
-// }
+    if (searchInput.value.trim()) {
+        searchIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x" viewBox="0 0 16 16">
+                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+            </svg>`;
+    } else {
+        searchIcon.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
+                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+            </svg>`;
+    }
+}
 
-// function clearSearch() {
-//     document.getElementById('searchInput').value = '';
-//     updateSearchIcon();
-//     filterSuppliers(); // Maintain active filters when clearing search
-// }
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    updateSearchIcon();
+    filterSuppliers(); // Maintain active filters when clearing search
+}
+
+async function showSupplierProducts(supplierId) {
+    try {
+        // 1. Fetch supplier details for modal title
+        const { data: supplier, error: supplierError } = await supabase
+            .from('supplier')
+            .select('perusahaan')
+            .eq('id', supplierId)
+            .single();
+        
+        if (supplierError) throw supplierError;
+
+        // 2. Fetch product variants
+        const { data: products, error: productsError } = await supabase
+            .from('produk')
+            .select(`
+                id,
+                nama,
+                var: produk_varian(
+                    id,
+                    varian
+                )
+            `)
+            .eq('id_supplier', supplierId)
+            .order('id', { ascending: true });
+
+        if (productsError) throw productsError;
+
+        console.log(products);
+
+        // 3. Update modal title
+        document.getElementById('supplierProductsModalLabel').textContent = 
+            `Produk dari ${supplier.perusahaan}`;
+
+        const tbody = document.getElementById('supplierProductsTableBody');
+
+        products.forEach(product => {
+            if (product.var && product.var.length > 0) {
+                // Add product row
+                const productRow = document.createElement('tr');
+                productRow.innerHTML = `
+                    <td colspan="5" class="fw-bold bg-light">
+                        ${product.nama} (ID: ${product.id})
+                    </td>
+                `;
+                tbody.appendChild(productRow);
+
+                // Add variant rows
+                product.var.forEach(variant => {
+                    const variantRow = document.createElement('tr');
+                    variantRow.innerHTML = `
+                        <td>${variant.id}</td>
+                        <td>${variant.varian}</td>
+                    `;
+                    tbody.appendChild(variantRow);
+                });
+            }
+        });
+
+        // 5. Show modal
+        const modal = new bootstrap.Modal(document.getElementById('supplierProductsModal'));
+        modal.show();
+
+    } catch (error) {
+        console.error('Error fetching supplier products:', error);
+        showToast('Failed to load supplier products', 'error');
+    }
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Fetch cities from the "kota" table and populate the dropdown
@@ -734,3 +892,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Expose editProduct to the global scope
 window.editSupplier = editSupplier;
 window.deleteSupplier = deleteSupplier;
+window.showSupplierProducts = showSupplierProducts;

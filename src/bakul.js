@@ -1,4 +1,10 @@
 import supabase from './db_conn.js';
+import { checkAuth } from './auth.js';
+
+(async () => {
+    // Auth check - will redirect if not logged in
+    await checkAuth(); 
+})();
 
 // Function to reset the form
 function resetForm() {
