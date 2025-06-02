@@ -84,6 +84,18 @@
             font-size: 1rem;
         }
 
+        /* Add this to your CSS file */
+        #supplierProductsModal .modal-body {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        #supplierProductsModal thead.table-light {
+            position: sticky;
+            top: -1px;
+            background-color: #f8f9fa; /* matches table-light color */
+        }
+
         .dataTables_wrapper .dataTables_length,
         .dataTables_wrapper .dataTables_filter,
         .dataTables_wrapper .dataTables_info,
@@ -115,10 +127,10 @@
             display: inline-block;
         }
     </style>
-  <script type="module" crossorigin src="/TA-inventory/assets/supplier-CTnYAJSa.js"></script>
+  <script type="module" crossorigin src="/TA-inventory/assets/supplier-BE4u7uIt.js"></script>
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/navbar-Cw31nkU0.js">
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-C7Nb5uSA.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/auth-BddM_kwX.js">
 </head>
 <body>
     <div id="navbar"></div>
@@ -175,9 +187,8 @@
         </div>
 
         <!-- Table Container -->
-        <div class="table-container mt-1 table-responsive">
-            <!-- <h2>Tabel Supplier</h2> -->
-            <table class="table table-bordered table-striped display" id="supplierTable">
+         <div class="table-container mt-4">
+            <table class="table table-bordered table-striped">
                 <thead>
                     <tr>
                         <th>ID</th>
@@ -193,6 +204,23 @@
                 </tbody>
             </table>
         </div>
+        <!-- <div class="table-container mt-1 table-responsive">
+            <table class="table table-bordered table-striped display" id="supplierTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Perusahaan</th>
+                        <th>Contact Person</th>
+                        <th>No. HP</th>
+                        <th>Kota</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="supplierTableBody">
+
+                </tbody>
+            </table>
+        </div> -->
     </div>
 
     <!-- Modal for Adding Supplier -->
@@ -229,6 +257,36 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
                     <button type="submit" class="btn btn-primary" form="supplierForm" id="submitButton">Tambah</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- modal products list -->
+    <div class="modal fade" id="supplierProductsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="supplierProductsModalLabel">Produk Supplier</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID Varian</th>
+                                    <th>Varian</th>
+                                </tr>
+                            </thead>
+                            <tbody id="supplierProductsTableBody">
+                                <!-- Data will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
                 </div>
             </div>
         </div>
