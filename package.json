@@ -3,8 +3,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "rm -rf docs && cp -r dist docs",
     "preview": "vite preview",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "deploy-docs": "npm run build && git add docs && git commit -m 'Deploy update' && git push"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
