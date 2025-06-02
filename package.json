@@ -3,7 +3,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "postbuild": "rm -rf docs && cp -r dist docs",
+    "postbuild": "rd /s /q docs && xcopy dist docs /E /I /Y",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist",
     "deploy-docs": "npm run build && git add docs && git commit -m 'Deploy update' && git push"
