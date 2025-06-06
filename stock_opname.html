@@ -10,6 +10,20 @@
             font-weight: bold;
             border-bottom: 3px solid #0d6efd;
         }
+        .unpaid-notice-banner {
+            background-color: #f8d7da;
+            color: #842029;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+        }
+
+        .unpaid-notice-banner .btn-close {
+            filter: invert(1);
+        }
     </style>
   <script type="module" crossorigin src="/TA-inventory/assets/stock_opname-CSauRoqX.js"></script>
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-Cc8gtU8M.js">
@@ -21,6 +35,9 @@
     <div id="navbar"></div>
 
     <div class="container">
+        <div id="unpaidBannerRow" class="row mb-3">
+            <div id="unpaidBanner"></div>
+        </div>
         <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4>Stock Opname</h4>
