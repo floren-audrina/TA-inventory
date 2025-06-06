@@ -1,6 +1,7 @@
 import supabase from './db_conn.js';
 import Chart from 'chart.js/auto';
 import { checkAuth } from './auth.js';
+import { displayUnpaidNotice } from './import.js';
 
 (async () => {
     // Auth check - will redirect if not logged in
@@ -1539,4 +1540,5 @@ async function initDashboard() {
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize the dashboard
     await initDashboard();
+    await displayUnpaidNotice();
 });

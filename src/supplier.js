@@ -1,4 +1,5 @@
 import supabase from './db_conn.js';
+import { displayUnpaidNotice } from './import.js';
 import { checkAuth } from './auth.js';
 
 (async () => {
@@ -840,6 +841,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await populateKotaDropdown();
     initializeDataTable();
     await fetchSuppliers();
+    await displayUnpaidNotice();
 
     // Initialize filters
     initializeFilters();

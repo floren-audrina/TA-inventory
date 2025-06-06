@@ -203,8 +203,108 @@ async function processEntry({
     }
 }
 
+// Function to check for unpaid overdue orders
+async function checkUnpaidOrders() {
+    try {
+        const today = new Date();
+        const oneMonthAgo = new Date(today);
+        const threeMonthsAgo = new Date(today);
+
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+        const { data: orders, error } = await supabase
+            .from('pesanan_pembelian')
+            .select(`
+                id,
+                tanggal_diterima,
+                supplier: id_supplier(perusahaan, cp)
+            `)
+            .eq('status_pesanan', 'diterima')
+            .lt('tanggal_diterima', oneMonthAgo.toISOString().split('T')[0]) // Older than 1 month
+
+        if (error) throw error;
+
+        // Add overdue range category
+        const annotatedOrders = (orders || []).map(order => {
+            const diterimaDate = new Date(order.tanggal_diterima);
+            let overdueType = '1_bulan';
+
+            if (diterimaDate < threeMonthsAgo) {
+                overdueType = '3_bulan';
+            }
+
+            return { ...order, overdueType };
+        });
+
+        return annotatedOrders;
+    } catch (error) {
+        console.error('Error checking unpaid orders:', error);
+        return [];
+    }
+}
+
+async function displayUnpaidNotice() {
+    const rowContainer = document.getElementById('unpaidBannerRow');
+    const container = document.getElementById('unpaidBanner');
+
+    if (!rowContainer || !container) {
+        console.warn('[WARN] unpaidBanner or unpaidBannerRow container not found.');
+        return;
+    }
+
+    container.innerHTML = ''; // clear old banner
+    rowContainer.style.display = 'none'; // hide by default
+
+    const unpaidOrders = await checkUnpaidOrders();
+
+    if (unpaidOrders.length === 0) return; // keep row hidden
+
+    // Show the row only if there are unpaid orders
+    rowContainer.style.display = 'flex'; // or 'block' depending on your layout
+
+    // create banner as before
+    const banner = document.createElement('div');
+    banner.className = 'unpaid-notice-banner alert alert-danger d-flex justify-content-between align-items-center mb-0';
+
+    let message = '';
+
+    const count1Month = unpaidOrders.filter(o => o.overdueType === '1_bulan').length;
+    const count3Month = unpaidOrders.filter(o => o.overdueType === '3_bulan').length;
+
+    if (count3Month > 0) {
+        message += `⚠️ ${count3Month} pesanan sudah lewat 3 bulan dan belum dibayar. `;
+    }
+    if (count1Month > 0) {
+        message += `${count1Month} pesanan sudah lewat 1 bulan dan belum dibayar. `;
+    }
+
+    message += `<a href="/pembelian.html" style="color: #a30000; text-decoration: underline;">Lihat daftar pesanan</a>`;
+
+    banner.innerHTML = `
+        <div class="container-fluid d-flex justify-content-between align-items-center py-2">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <span>${message}</span>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `;
+
+    container.appendChild(banner);
+
+    banner.querySelector('.btn-close').addEventListener('click', () => {
+        banner.remove();
+        // If no banner remains, hide the row container again
+        if (!container.hasChildNodes()) {
+            rowContainer.style.display = 'none';
+        }
+    });
+}
+
 export {
     processEntry,
     calculateHPP,
-    updateVariantStock
+    updateVariantStock,
+    displayUnpaidNotice
 };

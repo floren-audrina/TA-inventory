@@ -20,9 +20,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     } else {
         // Redirect to dashboard on successful login
         console.log('User logged in:', data.user);
-        // const baseUrl = import.meta.env.BASE_URL || '/TA-inventory/';
-        const baseUrl = '../';
-        window.location.href = `${baseUrl}product.html`;
+        // const baseUrl = '../';
+        // window.location.href = `${baseUrl}product.html`;
+        window.location.href = '/TA-inventory/product.html';
     }
 });
 

@@ -1,5 +1,6 @@
 import supabase from './db_conn.js';
 import { checkAuth } from './auth.js';
+import { displayUnpaidNotice } from './import.js';
 
 (async () => {
     // Auth check - will redirect if not logged in
@@ -1125,6 +1126,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Initialize filters
     initializeFilters();
+
+    await displayUnpaidNotice();
     
     // Setup other event listeners
     document.getElementById('addProductBtn').addEventListener('click', () => openProductModal('add'));

@@ -1,5 +1,5 @@
 import supabase from './db_conn.js';
-import { processEntry } from './import.js';
+import { processEntry, displayUnpaidNotice } from './import.js';
 import { checkAuth } from './auth.js';
 
 (async () => {
@@ -1365,7 +1365,8 @@ function clearProductSearch() {
 }
 
 // Initialize the page
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async() => {
+    await displayUnpaidNotice();
     // Add this to handle tab switching
     const tabEls = document.querySelectorAll('button[data-bs-toggle="tab"]');
     tabEls.forEach(tabEl => {

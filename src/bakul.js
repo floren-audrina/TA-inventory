@@ -1,5 +1,6 @@
 import supabase from './db_conn.js';
 import { checkAuth } from './auth.js';
+import { displayUnpaidNotice } from './import.js';
 
 (async () => {
     // Auth check - will redirect if not logged in
@@ -577,6 +578,7 @@ function clearSearch() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await displayUnpaidNotice();
     // Fetch cities from the "kota" table and populate the dropdown
     await populateKotaDropdown();
     await fetchBakul();

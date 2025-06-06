@@ -1,5 +1,5 @@
 import supabase from './db_conn.js';
-import { processEntry, updateVariantStock } from './import.js';
+import { processEntry, updateVariantStock, displayUnpaidNotice } from './import.js';
 import { checkAuth } from './auth.js';
 
 (async () => {
@@ -377,10 +377,33 @@ async function updateOrder() {
                     throw new Error('Quantities must be valid numbers');
                 }
 
-                // Update variant stock directly
-                const newStock = await updateVariantStock(item.variantId, netQty, 'pembelian');
-                if (newStock === null) {
-                    throw new Error(`Failed to update stock for variant ${item.variantId}`);
+                let stockAdjustment = netQty;
+
+                // If this item already exists (i.e. has a rowId), fetch previous qty_diterima and qty_rusak
+                if (item.rowId) {
+                    const { data: oldItem, error: fetchError } = await supabase
+                        .from('item_pesanan_pembelian')
+                        .select('qty_diterima, qty_rusak')
+                        .eq('id', item.rowId)
+                        .single();
+
+                    if (fetchError) {
+                        throw new Error(`Failed to fetch previous item data: ${fetchError.message}`);
+                    }
+
+                    const oldReceived = Number(oldItem.qty_diterima) || 0;
+                    const oldBroken = Number(oldItem.qty_rusak) || 0;
+                    const oldNetQty = oldReceived - oldBroken;
+
+                    stockAdjustment = netQty - oldNetQty;  // Only adjust the delta
+                }
+
+                // Update stock only if there's a change
+                if (stockAdjustment !== 0) {
+                    const newStock = await updateVariantStock(item.variantId, stockAdjustment, 'pembelian');
+                    if (newStock === null) {
+                        throw new Error(`Failed to update stock for variant ${item.variantId}`);
+                    }
                 }
             }
         }
@@ -397,9 +420,9 @@ async function updateOrder() {
 
             // Include additional fields for diterima/dibayar status
             if (formData.status !== 'dipesan') {
-                itemData.qty_diterima = item.receivedQty || null;
-                itemData.qty_rusak = item.brokenQty || null;
-                itemData.harga_beli = item.purchasePrice || null;
+                itemData.qty_diterima = item.receivedQty ?? null;
+                itemData.qty_rusak = item.brokenQty ?? null;
+                itemData.harga_beli = item.purchasePrice ?? null;
             }
 
             if (item.rowId) {
@@ -1790,7 +1813,7 @@ function resetFilters() {
 }
 
 // page init
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async() => {
     // Initialize variables
     const pembelianTabs = document.getElementById('pembelianTabs');
     const addDataBtn = document.getElementById('addbtn');
@@ -1808,7 +1831,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Initialize the page
-    initPage();
+    await initPage();
 
     document.getElementById('addProduct').addEventListener('click', addProductRow);
 
@@ -1882,7 +1905,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    function initPage() {
+    async function initPage() {
         renderOngoingOrders();
         initializeHistoryFilters(); // Changed from setupHistoryFilters to initializeHistoryFilters
         
@@ -1896,6 +1919,7 @@ document.addEventListener('DOMContentLoaded', function() {
             resetFilters();
             renderHistoryTable();
         });
+        await displayUnpaidNotice();
     }
 
     // Add event listener for filter apply button
@@ -1915,38 +1939,3 @@ const modal = document.getElementById('orderModal');
 modal.addEventListener('hidden.bs.modal', () => {
   modal.setAttribute('aria-hidden', 'true'); // Only hide AFTER modal closes
 });
-
-
-//async function updateOrderStatus(orderId, currentStatus) {
-//     const nextStatus = {
-//         dipesan: 'diterima',
-//         diterima: 'dibayar',
-//         dibayar: 'selesai'
-//     }[currentStatus];
-
-//     try {
-//         const updates = {
-//             status_pesanan: nextStatus
-//         };
-
-//         // Add payment details if moving to dibayar status
-//         // if (nextStatus === 'dibayar') {
-//         //     updates.tanggal_pembayaran = new Date().toISOString().split('T')[0];
-//         //     updates.alat_pembayaran = 'tunai'; // Default value, can be changed in edit
-//         // }
-
-//         const { error } = await supabase
-//             .from('pesanan_pembelian')
-//             .update(updates)
-//             .eq('id_beli', orderId);
-
-//         if (error) throw error;
-
-//         showToast(`Status pesanan berhasil diubah menjadi ${nextStatus}`, 'success');
-//         await renderOngoingOrders();
-//     } catch (error) {
-//         console.error('Error updating order status:', error);
-//         showToast('Gagal mengupdate status pesanan', 'error');
-//     }
-// }
-// window.updateOrderStatus = updateOrderStatus;

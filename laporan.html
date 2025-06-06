@@ -40,6 +40,20 @@
         opacity: 0.6;
         cursor: not-allowed;
     }
+    .unpaid-notice-banner {
+        background-color: #f8d7da;
+        color: #842029;
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        font-size: 16px;
+    }
+
+    .unpaid-notice-banner .btn-close {
+        filter: invert(1);
+    }
   </style>
 </head>
 <body class="bg-light">
@@ -59,6 +73,9 @@
             .catch(error => console.error('Error loading navbar:', error));
     </script>
     <div class="container mt-4" id="main-content">
+        <div id="unpaidBannerRow" class="row mb-3">
+            <div id="unpaidBanner"></div>
+        </div>
         <div class="card shadow">
             <div class="card-body">
                 <h2 class="card-title mb-4">Laporan</h2>

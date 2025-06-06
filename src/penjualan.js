@@ -1,5 +1,5 @@
 import supabase from './db_conn.js';
-import { processEntry } from './import.js';
+import { processEntry, displayUnpaidNotice } from './import.js';
 import { checkAuth } from './auth.js';
 
 (async () => {
@@ -2328,7 +2328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load initial data
     await loadBakuls();
     // await renderOngoingSales();
-    initPage();
+    await initPage();
 
     document.getElementById('addProductBtn').addEventListener('click', addItemRow);
 
@@ -2436,7 +2436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
     document.body.appendChild(script2);
 
-    function initPage() {
+    async function initPage() {
         renderOngoingSales();
         initializeHistoryFilters();
         
@@ -2450,6 +2450,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetFilters();
             renderHistoryTable();
         });
+        // Show unpaid notice banner
+        await displayUnpaidNotice();
     }
 });
 

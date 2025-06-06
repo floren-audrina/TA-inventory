@@ -1,5 +1,5 @@
 import supabase from './db_conn.js';
-import { processEntry } from './import.js';
+import { processEntry, displayUnpaidNotice } from './import.js';
 import { checkAuth } from './auth.js';
 
 (async () => {
@@ -583,6 +583,7 @@ function updateHistoryTable(entries) {
 
 // Initialize the page
 document.addEventListener('DOMContentLoaded', async () => {
+    await displayUnpaidNotice();
     // Check for variant ID in URL
     const variantId = getVariantIdFromUrl();
     if (!variantId) {

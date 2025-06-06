@@ -67,6 +67,20 @@
         .modal-header {
             border-bottom: none;
         }
+        .unpaid-notice-banner {
+            background-color: #f8d7da;
+            color: #842029;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+        }
+
+        .unpaid-notice-banner .btn-close {
+            filter: invert(1);
+        }
     </style>
 </head>
 <body>
@@ -92,6 +106,9 @@
     </div>
 
     <div class="container mt-4" id="main-content">
+        <div id="unpaidBannerRow" class="row mb-3">
+            <div id="unpaidBanner"></div>
+        </div>
         <h2 class="mb-4">Bakul</h2>
 
         <div class="d-flex justify-content-between mb-3">

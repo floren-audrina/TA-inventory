@@ -1,6 +1,7 @@
 import supabase from './db_conn.js';
 const { jsPDF } = window.jspdf;
 import { checkAuth } from './auth.js';
+import { displayUnpaidNotice } from './import.js';
 
 (async () => {
     // Auth check - will redirect if not logged in
@@ -70,7 +71,8 @@ function isEmptyData(data) {
     return false;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async() => {
+    await displayUnpaidNotice();
     // DOM elements
     const jenisSelect = document.getElementById('jenis');
     const startDateInput = document.getElementById('startDate');
