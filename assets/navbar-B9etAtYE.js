@@ -1,1 +1,0 @@
-import"./db_conn-Cc8gtU8M.js";import"./auth-CnZ2l4Iw.js";const e=document.getElementById("sidebar"),t=document.getElementById("menu-toggle");t&&e&&(t.addEventListener("click",()=>{e.classList.toggle("active")}),document.addEventListener("click",i=>{!e.contains(i.target)&&!t.contains(i.target)&&e.classList.remove("active")}));
