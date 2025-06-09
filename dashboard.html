@@ -14,29 +14,144 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* Custom overrides for Bootstrap */
         :root {
             --primary-color: #4f46e5;
+            --success-color: #1cc88a;
+            --danger-color: #e74a3b;
+            --warning-color: #f6c23e;
+            --info-color: #36b9cc;
+            --secondary-color: #858796;
         }
 
-        /* Sidebar styling */
-        .sidebar {
-            min-height: 100vh;
+        /* Global Styling */
+        body {
+            padding-top: 0;
+            background-color: #f8f9fa;
         }
 
-        /* Active tab styling */
+        /* Card Styling */
+        .card {
+            border: none;
+            border-radius: 0.5rem;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(33, 40, 50, 0.15);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 1.5rem;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            background-color: #f8f9fc;
+            border-bottom: 1px solid #e3e6f0;
+            padding: 1rem 1.35rem;
+            font-weight: 600;
+            border-radius: 0.5rem 0.5rem 0 0 !important;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        /* Tab Styling */
+        .nav-tabs .nav-link {
+            color: #6e707e;
+            font-weight: 600;
+            border: none;
+            padding: 0.75rem 1.5rem;
+        }
+
         .nav-tabs .nav-link.active {
             background-color: var(--primary-color);
             color: white;
-            border-color: var(--primary-color);
+            border-radius: 0.35rem;
         }
 
-        /* Insight cards */
-        .insight-card {
-            border-left: 4px solid var(--primary-color);
+        /* Table Styling */
+        .table-responsive {
+            position: relative;
         }
 
-        /* Loading state */
+        .table-responsive thead th {
+            position: sticky;
+            top: 0;
+            background-color: white;
+            z-index: 10;
+            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+        }
+
+        .table {
+            font-size: 0.85rem;
+            margin-bottom: 0;
+        }
+
+        .table thead th {
+            border-bottom-width: 1px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            color: var(--secondary-color);
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: rgba(78, 115, 223, 0.05);
+        }
+
+        /* Chart Containers */
+        .chart-container {
+            position: relative;
+            height: 100%;
+            min-height: 300px;
+        }
+
+        /* Section Dividers */
+        .section-divider {
+            border-right: 2px solid #dee2e6;
+            padding-right: 20px;
+        }
+
+        @media (max-width: 767.98px) {
+            .section-divider {
+                border-right: none;
+                padding-right: 0;
+                border-bottom: 2px solid #dee2e6;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }
+        }
+
+        /* Badges */
+        .badge {
+            font-weight: 500;
+            padding: 0.35em 0.65em;
+            font-size: 0.75em;
+            letter-spacing: 0.5px;
+        }
+
+        /* Custom Scrollbars */
+        .table-responsive::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .table-responsive::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .table-responsive::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        .table-responsive::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Loading State */
         .empty-state {
             display: flex;
             flex-direction: column;
@@ -50,38 +165,25 @@
             font-size: 48px;
             margin-bottom: 15px;
         }
-        /* Vertical divider between supplier and customer sections */
-        .section-divider {
-            border-right: 2px solid #dee2e6; /* Light gray border */
-            padding-right: 20px; /* Add some spacing */
+
+        /* Highlight Colors */
+        .highlight-primary {
+            color: var(--primary-color);
         }
 
-        /* Remove right padding and border on smaller screens */
-        @media (max-width: 767.98px) {
-            .section-divider {
-                border-right: none;
-                padding-right: 0;
-                border-bottom: 2px solid #dee2e6;
-                padding-bottom: 20px;
-                margin-bottom: 20px;
-            }
+        .highlight-success {
+            color: var(--success-color);
         }
-        .table-container {
-            position: relative;
-            border: 1px solid #dee2e6;
-            border-radius: 0.25rem;
+
+        .highlight-danger {
+            color: var(--danger-color);
         }
-        
-        .table-container thead th {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            background-color: white;
+
+        .highlight-warning {
+            color: var(--warning-color);
         }
-        
-        .table-container table {
-            margin-bottom: 0;
-        }
+
+        /* Unpaid Notice Banner */
         .unpaid-notice-banner {
             background-color: #f8d7da;
             color: #842029;
@@ -97,7 +199,7 @@
             filter: invert(1);
         }
     </style>
-  <script type="module" crossorigin src="/TA-inventory/assets/dashboard-D6Eee7xP.js"></script>
+  <script type="module" crossorigin src="/TA-inventory/assets/dashboard-BnavnDtv.js"></script>
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-Cc8gtU8M.js">
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/import-BouQIIWv.js">
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/auth-D_umN6eZ.js">
@@ -110,27 +212,12 @@
             <div id="unpaidBannerRow" class="row mb-3">
                 <div id="unpaidBanner"></div>
             </div>
+            
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1>Insights Dashboard</h1>
+                <h1 class="h3 mb-0 text-gray-800">Insights Dashboard</h1>
             </div>
-            
-            <!-- Tabs -->
-            <ul class="nav nav-tabs mb-4" id="dashboardTabs">
-                <li class="nav-item">
-                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview" type="button">Ringkasan</button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#inventory" type="button">Produk/Stok</button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#contact" type="button">Supplier/Bakul</button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#log" type="button">Stock Opname</button>
-                </li>
-            </ul>
-            
+
             <!-- Date Filter -->
             <div class="card mb-4">
                 <div class="card-body d-flex flex-wrap align-items-center">
@@ -149,6 +236,23 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Tabs -->
+            <ul class="nav nav-tabs mb-4" id="dashboardTabs">
+                <li class="nav-item">
+                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#overview" type="button">Ringkasan</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#inventory" type="button">Produk/Stok</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#contact" type="button">Supplier/Bakul</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#log" type="button">Stock Opname</button>
+                </li>
+            </ul>
+            
 
             <div class="tab-content" id="dashboardTabContent">
                 <!-- Overview Tab -->
@@ -156,28 +260,30 @@
                     <div id="overview-content">
                         <!-- Overview content structure -->
                         <div class="row mb-4">
-                            <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="col-md-4 mb-4 mb-md-0">
                                 <div class="card h-100">
                                     <div class="card-body">
                                         <h6 class="card-subtitle mb-2 text-muted">Total Pendapatan</h6>
-                                        <h3 class="card-title" id="revenue-metric"><i class="fas fa-spinner fa-spin"></i></h3>
+                                        <h3 class="card-title highlight-primary" id="revenue-metric"><i class="fas fa-spinner fa-spin"></i></h3>
                                         <p class="card-text text-success mb-0" id="revenue-change"></p>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="col-md-4 mb-4 mb-md-0">
                                 <div class="card h-100">
                                     <div class="card-body">
                                         <h6 class="card-subtitle mb-2 text-muted">Jumlah Penjualan</h6>
                                         <h3 class="card-title" id="sales-count"><i class="fas fa-spinner fa-spin"></i></h3>
+                                        <p class="card-text text-muted small">transaksi</p>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-3 mb-3 mb-md-0">
+                            <div class="col-md-4 mb-4 mb-md-0">
                                 <div class="card h-100">
                                     <div class="card-body">
                                         <h6 class="card-subtitle mb-2 text-muted">Jumlah Pembelian</h6>
                                         <h3 class="card-title" id="purchase-count"><i class="fas fa-spinner fa-spin"></i></h3>
+                                        <p class="card-text text-muted small">transaksi</p>
                                     </div>
                                 </div>
                             </div>
@@ -187,22 +293,22 @@
                             <div class="col-12">
                                 <div class="card">
                                     <div class="card-body">
-                                        <h5 class="card-title">Category Demand Analysis</h5>
+                                        <h5 class="card-title">Analisis Permintaan berdasarkan Kategori Produk</h5>
                                         <div class="row">
                                             <div class="col-md-6">
-                                                <div id="category-chart-container" style="height: 400px;">
+                                                <div class="chart-container">
                                                     <canvas id="category-demand-chart"></canvas>
                                                 </div>
                                             </div>
                                             <div class="col-md-6">
-                                                <div class="table-container" style="height: 400px; overflow-y: auto;">
+                                                <div class="table-responsive" style="max-height: 400px;">
                                                     <table class="table table-hover" id="category-demand-table">
-                                                        <thead class="sticky-top bg-white">
+                                                        <thead>
                                                             <tr>
-                                                                <th>Category</th>
-                                                                <th>Revenue</th>
-                                                                <th>Quantity Sold</th>
-                                                                <th>% of Total</th>
+                                                                <th>Kategori</th>
+                                                                <th>Pendapatan</th>
+                                                                <th>Qty terjual</th>
+                                                                <th>% dari Total</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="category-demand-data">
@@ -220,8 +326,46 @@
                             <div class="col-12">
                                 <div class="card">
                                     <div class="card-body">
+                                        <h5 class="card-title">Waktu Penjualan Tertinggi</h5>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="chart-container">
+                                                    <canvas id="peak-hours-chart"></canvas>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="chart-container">
+                                                    <canvas id="peak-days-chart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <div class="table-responsive" style="max-height: 300px;">
+                                                <table class="table table-hover">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Hari</th>
+                                                            <th>Jam Paling Ramai</th>
+                                                            <th>Jumlah Transaksi</th>
+                                                            <th>% dari Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="peak-times-data">
+                                                        <!-- Data will be loaded by JavaScript -->
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-body">
                                         <h5 class="card-title">Tren Penjualan vs Pembelian</h5>
-                                        <div class="chart-container" style="height: 400px;">
+                                        <div class="chart-container">
                                             <canvas id="sales-purchases-trend-chart"></canvas>
                                         </div>
                                     </div>
@@ -234,58 +378,69 @@
                 <!-- Inventory Tab -->
                 <div class="tab-pane fade" id="inventory" role="tabpanel">
                     <div id="inventory-content">
+                        <!-- Inventory Summary Cards -->
+                        <div class="row mb-4">
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">Total Nilai Stok</h6>
+                                        <h3 class="card-title highlight-primary" id="total-inventory-value"><i class="fas fa-spinner fa-spin"></i></h3>
+                                        <!-- <p class="card-text text-muted small">Current value of all stock</p> -->
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">Total Stok yang Dimiliki</h6>
+                                        <h3 class="card-title highlight-success" id="total-units-stock"><i class="fas fa-spinner fa-spin"></i></h3>
+                                        <p class="card-text text-muted small">unit</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="row">
                             <!-- Stock Overview Section -->
-                            <div class="col-md-6 section-divider">
-                                <h4 class="mb-4">Stock Overview</h4>
+                            <div class="col-md-6">
+                                <!-- <h4 class="mb-4">Stock Overview</h4> -->
                                 
                                 <!-- Stock Range Cards -->
                                 <div class="row mb-4">
                                     <div class="col-md-6 mb-3">
                                         <div class="card h-100">
                                             <div class="card-body">
-                                                <h6 class="card-subtitle mb-2 text-muted">Lowest Stock Items</h6>
-                                                <div id="lowest-stock-items" class="mt-3"></div>
+                                                <h6 class="card-subtitle mb-2 text-muted">Produk dengan stok terendah</h6>
+                                                <div id="lowest-stock-items" class="mt-3" style="height: 150px; overflow-y: auto;"></div>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <div class="card h-100">
                                             <div class="card-body">
-                                                <h6 class="card-subtitle mb-2 text-muted">Highest Stock Items</h6>
-                                                <div id="highest-stock-items" class="mt-3"></div>
+                                                <h6 class="card-subtitle mb-2 text-muted">Produk dengan stok terbanyak</h6>
+                                                <div id="highest-stock-items" class="mt-3" style="height: 150px; overflow-y: auto;"></div>
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Stock Progression Card -->
-                                <div class="card mb-4">
-                                    <div class="card-header">
-                                        <h5 class="mb-0">Stock Progression</h5>
-                                    </div>
-                                    <div class="card-body">
-                                        <!-- Change this to a canvas element -->
-                                        <canvas id="stock-progression-chart" height="300"></canvas>
                                     </div>
                                 </div>
                                 
                                 <!-- Below Minimum Stock Card -->
                                 <div class="card">
                                     <div class="card-header d-flex justify-content-between align-items-center">
-                                        <h5 class="mb-0">Below Minimum Stock</h5>
+                                        <h5 class="mb-0">Stok di bawah minimum</h5>
                                         <span id="below-minimum-badge" class="badge bg-danger">0 items</span>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
-                                                        <th>Product</th>
-                                                        <th>Variant</th>
-                                                        <th>Current</th>
+                                                        <th>Produk</th>
+                                                        <th>Varian</th>
+                                                        <th>Stok</th>
                                                         <th>Minimum</th>
-                                                        <th>Difference</th>
+                                                        <th>Selisih</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="below-minimum-items"></tbody>
@@ -297,23 +452,23 @@
                             
                             <!-- Inventory Health Section -->
                             <div class="col-md-6 ps-md-4">
-                                <h4 class="mb-4">Inventory Health</h4>
+                                <!-- <h4 class="mb-4">Inventory Health</h4> -->
                                 
                                 <!-- Movement Speed Card -->
                                 <div class="card mb-4">
                                     <div class="card-header d-flex justify-content-between align-items-center">
-                                        <h5 class="mb-0">Product Movement</h5>
-                                        <span class="badge bg-info">Last 30 Days</span>
+                                        <h5 class="mb-0">Pergerakan Produk</h5>
+                                        <!-- <span class="badge bg-info">Last 30 Days</span> -->
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
-                                                        <th>Speed</th>
-                                                        <th>Product</th>
-                                                        <th>Variant</th>
-                                                        <th>Qty Sold</th>
+                                                        <th>Tingkat</th>
+                                                        <th>Produk</th>
+                                                        <th>Varian</th>
+                                                        <th>Qty terjual</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="product-movement"></tbody>
@@ -343,9 +498,9 @@
                                                 <small class="text-muted">No sales in 90 days</small>
                                             </div>
                                         </div>
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Product</th>
                                                         <th>Variant</th>
@@ -400,9 +555,9 @@
                                         <span class="badge bg-primary">By Volume</span>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Supplier</th>
                                                         <th>Items</th>
@@ -421,9 +576,9 @@
                                         <h5 class="mb-0">Most Purchased Items</h5>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Supplier</th>
                                                         <th>Item</th>
@@ -470,9 +625,9 @@
                                         <span class="badge bg-info">Last 30 Days</span>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Customer</th>
                                                         <th>Last Order</th>
@@ -495,9 +650,9 @@
                                         </div>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Customer</th>
                                                         <th>Orders</th>
@@ -573,9 +728,9 @@
                                         <span id="unadjusted-badge" class="badge bg-danger">0 items</span>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Product</th>
                                                         <th>Variant</th>
@@ -600,9 +755,9 @@
                                         <span id="unaudited-badge" class="badge bg-warning">0 item</span>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Produk</th>
                                                         <th>Varian</th>
@@ -622,9 +777,9 @@
                                         <span class="badge bg-secondary">Last 10</span>
                                     </div>
                                     <div class="card-body p-0">
-                                        <div class="table-responsive">
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
                                             <table class="table table-hover mb-0">
-                                                <thead class="table-light">
+                                                <thead>
                                                     <tr>
                                                         <th>Tanggal</th>
                                                         <th>ID Log</th>
