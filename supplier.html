@@ -141,28 +141,19 @@
             filter: invert(1);
         }
     </style>
-  <script type="module" crossorigin src="/TA-inventory/assets/supplier-2lJWHjMl.js"></script>
+  <script type="module" crossorigin src="/TA-inventory/assets/supplier-CZ4XA60r.js"></script>
   <link rel="modulepreload" crossorigin href="/TA-inventory/assets/db_conn-Cc8gtU8M.js">
-  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/navbar-Cao3KjDQ.js">
-  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/import-B-5Afsad.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/assets/import-DEtOz7nN.js">
 </head>
 <body>
-    <div id="navbar"></div>
-   
+    <div id="navbar"></div>
     <!-- <script type="module">
-        import navbarUrl from './src/navbar.js?url';
-
-        fetch("navbar.html")
-            .then(response => response.text())
-            .then(html => {
-            document.getElementById("navbar").innerHTML = html;
-            const script = document.createElement('script');
-            script.type = 'module';
-            script.src = navbarUrl;
-            document.body.appendChild(script);
-            })
-            .catch(error => console.error('Error loading navbar:', error));
+        import { loadNavbar } from './src/navbarLoad.js?url';
+        (async () => {
+            await loadNavbar();
+        })();
     </script> -->
+   
 
     <!-- Toast Container -->
     <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
