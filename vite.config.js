@@ -16,7 +16,7 @@ export default defineConfig({
     port: 3000,
   },
   build: {
-    outDir: 'dist',
+    outDir: 'docs',
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -24,7 +24,6 @@ export default defineConfig({
         history: resolve(__dirname, './history.html'),
         supplier: resolve(__dirname, './supplier.html'),
         bakul: resolve(__dirname, './bakul.html'),
-        navbar: resolve(__dirname, './navbar.html'),
         stock_opname: resolve(__dirname, './stock_opname.html'),
         dashboard: resolve(__dirname, './dashboard.html'),
         laporan: resolve(__dirname, './laporan.html'),

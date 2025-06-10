@@ -1,13 +1,12 @@
 import supabase from './db_conn.js';
 import { processEntry, displayUnpaidNotice } from './import.js';
-import { checkAuth } from './auth.js';
+import { checkAuth, initAuthStateListener } from './auth.js';
+
+initAuthStateListener();
 
 (async () => {
     // Auth check - will redirect if not logged in
     await checkAuth(); 
-    
-    // Rest of your page-specific code
-    initPageSpecificFunctions();
 })();
 
 function formatDate(dateStr) {

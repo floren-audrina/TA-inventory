@@ -127,23 +127,9 @@
 <body>
     <div id="navbar"></div>
     <script type="module">
-        import navbarUrl from './src/navbar.js?url';
-
-        fetch("navbar.html")
-            .then(response => response.text())
-            .then(async html => {
-                document.getElementById("navbar").innerHTML = html;
-
-                const module = await import(navbarUrl);
-                if (module.setupLogout) {
-                    module.setupLogout(); 
-                } else {
-                    console.error('setupLogout not found in navbar.js');
-                }
-            })
-            .catch(error => console.error('Error loading navbar:', error));
+        import { loadNavbar } from './src/navbarLoad.js';
+        loadNavbar();
     </script>
-
 
     <div class="container mt-4" id="main-content">
         <div id="unpaidBannerRow" class="row mb-3">

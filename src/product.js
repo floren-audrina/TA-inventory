@@ -1,6 +1,8 @@
 import supabase from './db_conn.js';
-import { checkAuth } from './auth.js';
+import { checkAuth, initAuthStateListener } from './auth.js';
 import { displayUnpaidNotice } from './import.js';
+
+initAuthStateListener();
 
 (async () => {
     // Auth check - will redirect if not logged in

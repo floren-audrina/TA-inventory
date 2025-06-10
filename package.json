@@ -4,8 +4,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "gh-pages -d dist",
-    "deploy-docs": "npm run build && git add docs && git commit -m 'Deploy update' && git push"
+    "deploy": "gh-pages -d docs",
+    "deploy-docs": "npm run build && git add docs && git commit -m \"Deploy update\" && git push"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

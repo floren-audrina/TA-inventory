@@ -145,6 +145,10 @@
 <body>
     <div id="navbar"></div>
     <script type="module">
+        import { loadNavbar } from './src/navbarLoad.js';
+        loadNavbar();
+    </script>
+    <!-- <script type="module">
         import navbarUrl from './src/navbar.js?url';
 
         fetch("navbar.html")
@@ -157,7 +161,7 @@
             document.body.appendChild(script);
             })
             .catch(error => console.error('Error loading navbar:', error));
-    </script>
+    </script> -->
 
     <!-- Toast Container -->
     <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
