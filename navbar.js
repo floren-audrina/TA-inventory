@@ -1,1 +1,0 @@
-import"./modulepreload-polyfill.js";import"./db_conn.js";const e=document.getElementById("sidebar"),t=document.getElementById("menu-toggle");t&&e&&(t.addEventListener("click",()=>{e.classList.toggle("active")}),document.addEventListener("click",i=>{!e.contains(i.target)&&!t.contains(i.target)&&e.classList.remove("active")}));
