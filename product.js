@@ -136,7 +136,7 @@ import"./modulepreload-polyfill.js";import{_ as $,s as d}from"./db_conn.js";impo
                                            <td>${g.jumlah_stok}</td>
                                            <td>${g.stok_reservasi}</td>
                                            <td>
-                                               <button class="btn btn-info btn-sm me-1" onclick="viewVariantHistory(${g.id})">Detail</button>
+                                               <button class="btn btn-info btn-sm me-1 mb-1" onclick="viewVariantHistory(${g.id})">Detail</button>
                                                <button class="btn btn-danger btn-sm" onclick="deleteVariant(${g.id})">Hapus</button>
                                            </td>
                                        </tr>
