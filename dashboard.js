@@ -50,9 +50,7 @@ var Ao=Object.defineProperty;var Oo=(n,t,e)=>t in n?Ao(n,t,{enumerable:!0,config
                         )
                     )
                 ),
-                pesanan_penjualan:id_jual (
-                    tanggal_pesan
-                )
+                pesanan_penjualan!inner(tanggal_pesan)
             `).gte("pesanan_penjualan.tanggal_pesan",n).lte("pesanan_penjualan.tanggal_pesan",t);if(console.log("data: ",e),i)throw i;const s=document.getElementById("category-demand-chart"),o=s.closest(".chart-container"),a=document.getElementById("category-demand-data"),r=document.getElementById("category-demand-table");if(!e||e.length===0){window.categoryDemandChart&&(window.categoryDemandChart.destroy(),window.categoryDemandChart=null),o.innerHTML=`
                 <div class="empty-state text-center py-4">
                     <i class="fas fa-chart-pie fa-2x text-muted mb-2"></i>
