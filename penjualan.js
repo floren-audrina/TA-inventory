@@ -238,7 +238,7 @@ import"./modulepreload-polyfill.js";import{_ as Z,s as y}from"./db_conn.js";impo
                     ),
                     qty_dipesan
                 )
-            `).eq("status_pesanan","selesai").order("tanggal_pesan",{ascending:!1});e&&t&&(s=s.gte("tanggal_pesan",e).lte("tanggal_pesan",t)),a&&(s=s.eq("id_bakul",a)),n&&(s=s.eq("pihak_pengambil",n)),r&&(s=s.eq("alat_pembayaran",r));const{data:i,error:l}=await s;if(l)throw l;o.innerHTML="",i&&i.length>0?(i.forEach(c=>{const m=q(c.tanggal_pesan),v=c.tanggal_diambil?q(c.tanggal_diambil):"-",d=c.tanggal_dibayar?q(c.tanggal_dibayar):"-",u=c.items.reduce((I,_)=>I+_.qty_dipesan,0),h=document.createElement("tr");h.innerHTML=`
+            `).eq("status_pesanan","selesai").order("tanggal_pesan",{ascending:!1});e&&t&&(s=s.gte("tanggal_pesan",e).lte("tanggal_pesan",t)),a&&(s=s.eq("id_bakul",a)),r&&(s=s.eq("pihak_pengambil",r)),n&&(s=s.eq("alat_pembayaran",n));const{data:i,error:l}=await s;if(l)throw l;o.innerHTML="",i&&i.length>0?(i.forEach(c=>{const m=q(c.tanggal_pesan),v=c.tanggal_diambil?q(c.tanggal_diambil):"-",d=c.tanggal_dibayar?q(c.tanggal_dibayar):"-",u=c.items.reduce((I,_)=>I+_.qty_dipesan,0),h=document.createElement("tr");h.innerHTML=`
                     <td>${c.id}</td>
                     <td>${m}</td>
                     <td>${c.bakul.nama}</td>
