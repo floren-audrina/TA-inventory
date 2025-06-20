@@ -16,13 +16,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
     if (error) {
         // Display error message
-        showToast('Login failed: ' + error.message, 'error');
+        showToast('Login gagal: ' + error.message, 'error');
     } else {
         // Redirect to dashboard on successful login
         console.log('User logged in:', data.user);
-        // const baseUrl = '../';
-        // window.location.href = `${baseUrl}product.html`;
-        window.location.href = '/TA-inventory/product.html';
+        const baseUrl = '../';
+        window.location.href = `${baseUrl}product.html`;
+        // window.location.href = '/TA-inventory/product.html';
     }
 });
 

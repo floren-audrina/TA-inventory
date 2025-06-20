@@ -183,15 +183,15 @@ async function filterProducts() {
                 id_supplier,
                 id_subkategori,
                 subkategori!inner(
-                  id,
-                  subkategori,
-                  kategori!inner(
+                id,
+                subkategori,
+                kategori!inner(
                     id,
                     kategori
-                  )
+                )
                 ),
                 supplier:supplier (perusahaan, cp)
-              `)
+            `)
             .order('id', { ascending: true });
 
         // Apply filters based on active filter type
@@ -221,7 +221,8 @@ async function filterProducts() {
         // Fetch all variants
         const { data: variants, error: variantsError } = await supabase
             .from('produk_varian')
-            .select('*');
+            .select('*')
+            .order('varian', { ascending: true });
         if (variantsError) throw variantsError;
 
         // Group variants by product ID
@@ -239,8 +240,8 @@ async function filterProducts() {
             filteredProducts = products.filter(product => {
                 const productVariants = variantsByProduct[product.id] || [];
                 const hasRealVariants = productVariants.length > 1 || 
-                                      (productVariants.length === 1 && 
-                                       productVariants[0].varian.toLowerCase() !== "standar");
+                                    (productVariants.length === 1 && 
+                                    productVariants[0].varian.toLowerCase() !== "standar");
 
                 if (activeFilters.variant === 'has') {
                     return hasRealVariants;
@@ -458,7 +459,9 @@ async function performSearch() {
         // Fetch variants and update table (your existing code)
         const { data: variants, error: variantsError } = await supabase
             .from('produk_varian')
-            .select('*');
+            .select('*')
+            .order('varian', { ascending: true });
+
         
         if (variantsError) throw variantsError;
 
@@ -474,7 +477,7 @@ async function performSearch() {
                 const productVariants = variantsByProduct[product.id] || [];
                 const hasRealVariants = productVariants.length > 1 || 
                     (productVariants.length === 1 && 
-                     productVariants[0].varian.toLowerCase() !== "standar");
+                    productVariants[0].varian.toLowerCase() !== "standar");
                 return activeFilters.variant === 'has' ? hasRealVariants : !hasRealVariants;
             });
         }
@@ -518,33 +521,33 @@ function updateTable(products, variantsByProduct) {
             <td>
                 ${productVariants.length > 0 
                     ? `<a href="#" class="variant-toggle">Klik untuk melihat varian ▼</a>
-                       <div class="nested-table mt-2" style="display: none;">
-                           <table class="table table-bordered">
-                               <thead>
-                                   <tr>
-                                       <th>Varian</th>
-                                       <th>Harga</th>
-                                       <th>Jumlah stok</th>
-                                       <th>Stok reservasi</th>
-                                       <th>Aksi</th>
-                                   </tr>
-                               </thead>
-                               <tbody>
-                                   ${productVariants.map(variant => `
-                                       <tr>
-                                           <td>${variant.varian}</td>
-                                           <td>Rp ${variant.harga_standar.toLocaleString('id-ID')}</td>
-                                           <td>${variant.jumlah_stok}</td>
-                                           <td>${variant.stok_reservasi}</td>
-                                           <td>
-                                               <button class="btn btn-info btn-sm me-1" onclick="viewVariantHistory(${variant.id})">Detail</button>
-                                               <button class="btn btn-danger btn-sm" onclick="deleteVariant(${variant.id})">Hapus</button>
-                                           </td>
-                                       </tr>
-                                   `).join('')}
-                               </tbody>
-                           </table>
-                       </div>`
+                    <div class="nested-table mt-2" style="display: none;">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Varian</th>
+                                    <th>Harga</th>
+                                    <th>Jumlah stok</th>
+                                    <th>Stok reservasi</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${productVariants.map(variant => `
+                                    <tr>
+                                        <td>${variant.varian}</td>
+                                        <td>Rp ${variant.harga_standar.toLocaleString('id-ID')}</td>
+                                        <td>${variant.jumlah_stok}</td>
+                                        <td>${variant.stok_reservasi}</td>
+                                        <td>
+                                            <button class="btn btn-info btn-sm me-1 mb-1" onclick="viewVariantHistory(${variant.id})">Detail</button>
+                                            <button class="btn btn-danger btn-sm" onclick="deleteVariant(${variant.id})">Hapus</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>`
                     : 'Tidak ada varian'}
             </td>
             <td>${product.supplier?.perusahaan || '-'} (${product.supplier?.cp || '-'})</td>
@@ -626,6 +629,8 @@ async function openProductModal(mode = 'add', productId = null) {
         mode === 'add' ? 'Tambah Produk' : 'Edit Produk';
     document.getElementById('saveProductBtn').textContent = 
         mode === 'add' ? 'Simpan' : 'Update';
+    document.getElementById('saveProductBtn').textContent = 
+        mode === 'add' ? 'Simpan' : 'Update';
     
     if (mode === 'edit' && productId) {
         await populateProductForm(productId);
@@ -696,24 +701,19 @@ async function addVariantRow(variantData = null) {
     const variantsBody = document.getElementById('variantsTableBody');
     const row = document.createElement('tr');
     
-    // // Load enum values
-    // const enumValues = await loadVariantEnum();
-    
-    // // Create dropdown options HTML
-    // const dropdownOptions = enumValues.map(value => 
-    //     `<option value="${value}" ${variantData?.varian === value ? 'selected' : ''}>
-    //         ${value.charAt(0).toUpperCase() + value.slice(1)}
-    //     </option>`
-    // ).join('');
-    
     if (variantData) {
         // Edit mode with existing variant data
+        // Explicitly check for 0 (including when jumlah_stok is 0)
+        const stockValue = variantData.jumlah_stok !== null && variantData.jumlah_stok !== undefined 
+            ? variantData.jumlah_stok 
+            : '';
+            
         row.innerHTML = `
             <td>
                 <input type="text" class="form-control variant-name" value="${variantData.varian}" required>
             </td>
             <td><input type="number" class="form-control variant-price" value="${variantData.harga_standar || ''}" step="0.01" required></td>
-            <td><input type="number" class="form-control variant-stock" value="${variantData.jumlah_stok || ''}" required></td>
+            <td><input type="number" class="form-control variant-stock" value="${stockValue}" readonly></td>
             <td>
                 <button type="button" class="btn btn-danger btn-sm remove-variant">×</button>
                 ${variantData.id_varian ? `<input type="hidden" class="variant-id" value="${variantData.id_varian}">` : ''}
@@ -723,7 +723,7 @@ async function addVariantRow(variantData = null) {
         // Add mode - empty row
         row.innerHTML = `
             <td>
-               <input type="text" class="form-control variant-name" placeholder="Nama Varian" required>
+                <input type="text" class="form-control variant-name" placeholder="Nama Varian" required>
             </td>
             <td><input type="number" class="form-control variant-price" placeholder="Harga" step="0.01" required></td>
             <td><input type="number" class="form-control variant-stock" placeholder="Stok" required></td>

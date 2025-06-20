@@ -1,6 +1,6 @@
 import supabase from './db_conn.js';
-import { processEntry, displayUnpaidNotice } from './import.js';
 import { checkAuth, initAuthStateListener } from './auth.js';
+import { processEntry, displayUnpaidNotice } from './import.js';
 
 initAuthStateListener();
 
@@ -11,6 +11,7 @@ initAuthStateListener();
 
 // Global variables
 let stockOpnameModal;
+const selectedVariants = new Set();
 
 // Utility functions
 function toLocalISOString(date) {
@@ -98,6 +99,16 @@ async function prepareModal(mode = 'add', logData = null) {
     
     document.querySelector('#productsTable tbody').innerHTML = '';
     
+    // Clear selected variants when in add mode
+    if (mode === 'add') {
+        // Only clear if this is a brand new modal open
+        if (!modal.dataset.preserveSelections) {
+            selectedVariants.clear();
+        }
+    } else {
+        selectedVariants.clear();
+    }
+    
     // Set modal title and button text
     const modalTitle = modal.querySelector('.modal-title');
     const submitBtn = document.getElementById('submitLogButton');
@@ -126,6 +137,12 @@ async function prepareModal(mode = 'add', logData = null) {
 async function loadProductsIntoModal(isEditMode = false, logData = null, page = 1, pageSize = 10) {
     const modalProductTable = document.querySelector('#stockOpnameModal table tbody');
     const selectAllCheckbox = document.getElementById('selectAll');
+
+    if (isEditMode && logData) {
+        logData.items.forEach(item => {
+            selectedVariants.add(item.produk_varian.id);
+        });
+    }
     
     try {
         // Show loading state
@@ -157,7 +174,8 @@ async function loadProductsIntoModal(isEditMode = false, logData = null, page = 
                     kategori:id_kategori(kategori)
                 )
                 )`, { count: 'exact' })
-            .order('produk(nama)', { ascending: true })  // Modified syntax
+            .order('produk(nama)', { ascending: true })  
+            .order('id', { ascending: true }) 
             .range(offset, offset + pageSize - 1);
 
         if (error) throw error;
@@ -182,14 +200,18 @@ async function loadProductsIntoModal(isEditMode = false, logData = null, page = 
 
         productVariants.forEach(variant => {
             const isExisting = existingVariantIds.includes(variant.id);
+            const isChecked = selectedVariants.has(variant.id) || isExisting;
+            
+            if (isChecked) selectedVariants.add(variant.id);
+            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
                     <input type="checkbox" 
-                           class="form-check-input product-checkbox" 
-                           data-product-id="${variant.produk.id}"
-                           data-variant-id="${variant.id}"
-                           ${isExisting ? 'checked' : ''}>
+                        class="form-check-input product-checkbox" 
+                        data-product-id="${variant.produk.id}"
+                        data-variant-id="${variant.id}"
+                        ${isChecked ? 'checked' : ''}>
                 </td>
                 <td>${variant.produk.nama}</td>
                 <td>
@@ -199,15 +221,36 @@ async function loadProductsIntoModal(isEditMode = false, logData = null, page = 
                     </span>
                 </td>
             `;
+            
+            // Add checkbox change handler
+            row.querySelector('input').addEventListener('change', (e) => {
+                const variantId = parseInt(e.target.dataset.variantId);
+                if (e.target.checked) {
+                    selectedVariants.add(variantId);
+                } else {
+                    selectedVariants.delete(variantId);
+                }
+            });
+            
             modalProductTable.appendChild(row);
         });
+
+        // Update select all checkbox state
+        const allVariantsOnPage = Array.from(document.querySelectorAll('.product-checkbox'));
+        selectAllCheckbox.checked = allVariantsOnPage.length > 0 && allVariantsOnPage.every(checkbox => checkbox.checked);
 
         // Handle select all checkbox
         selectAllCheckbox.checked = false;
         selectAllCheckbox.addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('.product-checkbox:not(:disabled)');
+            const checkboxes = document.querySelectorAll('.product-checkbox');
             checkboxes.forEach(checkbox => {
                 checkbox.checked = this.checked;
+                const variantId = parseInt(checkbox.dataset.variantId);
+                if (this.checked) {
+                    selectedVariants.add(variantId);
+                } else {
+                    selectedVariants.delete(variantId);
+                }
             });
         });
 
@@ -324,25 +367,18 @@ async function submitStockOpname() {
 async function submitNewStockOpname() {
     const tanggalInput = document.getElementById('tanggal');
     const submitBtn = document.getElementById('submitLogButton');
-    const checkedItems = document.querySelectorAll('#stockOpnameModal .product-checkbox:checked');
 
-    // Validate inputs
-    if (!tanggalInput.value) {
-        showToast('Tanggal harus diisi', 'error');
-        return;
-    }
-
-    if (checkedItems.length === 0) {
+    // Validate using the Set size instead of DOM checkboxes
+    if (selectedVariants.size === 0) {
         showToast('Pilih minimal 1 produk', 'error');
         return;
     }
 
     try {
-        // Show loading state
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Menyimpan...';
 
-        // 1. Insert to log_opname table
+        // 1. Insert log_opname
         const { data: logData, error: logError } = await supabase
             .from('log_opname')
             .insert({
@@ -355,22 +391,24 @@ async function submitNewStockOpname() {
 
         if (logError) throw logError;
 
-        // 2. Prepare items for item_opname table
-        const itemsToInsert = Array.from(checkedItems).map(checkbox => ({
+        // 2. Prepare items from selectedVariants Set
+        const itemsToInsert = Array.from(selectedVariants).map(variantId => ({
             id_log: logData.id,
-            id_varian: parseInt(checkbox.dataset.variantId),
+            id_varian: variantId,
             stok: null,
             status_item_log: 'pending'
         }));
 
-        // 3. Insert to item_opname table
+        // 3. Batch insert all selected items
         const { error: itemsError } = await supabase
             .from('item_opname')
             .insert(itemsToInsert);
 
         if (itemsError) throw itemsError;
 
-        // Success - close modal and refresh
+        // Success - mark modal to preserve selections if reopened
+        document.getElementById('stockOpnameModal').dataset.preserveSelections = "true";
+        
         showToast('Stock opname berhasil dibuat');
         stockOpnameModal.hide();
         await checkActiveLog();
@@ -379,10 +417,8 @@ async function submitNewStockOpname() {
         console.error('Error submitting stock opname:', error);
         showToast('Gagal menyimpan stock opname: ' + error.message, 'error');
     } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Simpan';
-        }
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Simpan';
     }
 }
 
@@ -1117,7 +1153,7 @@ function showRiwayatDetails(logData) {
 }
 
 // search functions
-async function performProductSearch() {
+async function performProductSearch(page = 1, pageSize = 10) {
     const modal = document.getElementById('stockOpnameModal');
     const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
     const modalProductTable = document.querySelector('#stockOpnameModal table tbody');
@@ -1134,33 +1170,39 @@ async function performProductSearch() {
                     <div class="spinner-border spinner-border-sm" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    Mencari produk...
+                    ${searchTerm ? 'Mencari produk...' : 'Memuat produk...'}
                 </td>
             </tr>`;
 
-        // Base query - we'll first search in produk_varian table
-        let query = supabase
-            .from('produk_varian')
-            .select(`
-                id,
-                varian,
-                jumlah_stok,
-                produk:id_produk(
-                    id,
-                    nama,
-                    subkategori:id_subkategori(
-                        subkategori,
-                        kategori:id_kategori(kategori)
-                    )
-                )`, { count: 'exact' })
-            .order('id_produk', { ascending: true });
+        // Calculate offset for pagination
+        const offset = (page - 1) * pageSize;
+        
+        let query;
+        let countQuery;
+        let productVariants = [];
+        let count = 0;
 
-        // Add search conditions if search term exists
         if (searchTerm) {
-            // First search in produk_varian.varian
-            query = query.ilike('varian', `%${searchTerm}%`);
-            
-            // Then we need a separate query to search in produk.nama
+            // Search in both produk_varian.varian and produk.nama
+            const { data: variantsByVarian, error: variantsError, count: varianCount } = await supabase
+                .from('produk_varian')
+                .select(`
+                    id,
+                    varian,
+                    jumlah_stok,
+                    produk!inner(
+                        id,
+                        nama,
+                        subkategori:id_subkategori(
+                            subkategori,
+                            kategori:id_kategori(kategori)
+                        )
+                    )`, { count: 'exact' })
+                .ilike('varian', `%${searchTerm}%`)
+                .range(offset, offset + pageSize - 1);
+
+            if (variantsError) throw variantsError;
+
             const { data: productsByName, error: productsError } = await supabase
                 .from('produk')
                 .select(`
@@ -1177,24 +1219,20 @@ async function performProductSearch() {
             if (productsError) throw productsError;
 
             // Combine results from both queries
-            const { data: variantsByVarian, error: variantsError } = await query;
-            if (variantsError) throw variantsError;
-
-            let combinedResults = variantsByVarian || [];
+            productVariants = variantsByVarian || [];
             
-            // Add products found by name and their variants
             if (productsByName && productsByName.length > 0) {
                 productsByName.forEach(product => {
                     if (product.varian && product.varian.length > 0) {
                         product.varian.forEach(variant => {
-                            combinedResults.push({
+                            productVariants.push({
                                 id: variant.id,
                                 varian: variant.varian,
                                 jumlah_stok: variant.jumlah_stok,
                                 produk: {
                                     id: product.id,
                                     nama: product.nama,
-                                    subkategori: null // You might need to fetch this if needed
+                                    subkategori: null
                                 }
                             });
                         });
@@ -1202,71 +1240,42 @@ async function performProductSearch() {
                 });
             }
 
-            // Remove duplicates
-            const uniqueResults = combinedResults.reduce((acc, current) => {
+            // Remove duplicates and count
+            const uniqueResults = productVariants.reduce((acc, current) => {
                 if (!acc.some(item => item.id === current.id)) {
                     acc.push(current);
                 }
                 return acc;
             }, []);
 
-            // Clear and populate the table
-            modalProductTable.innerHTML = '';
+            count = uniqueResults.length;
+            // Apply pagination to the combined results
+            productVariants = uniqueResults.slice(offset, offset + pageSize);
+        } else {
+            // Normal query with pagination when no search term
+            query = supabase
+                .from('produk_varian')
+                .select(`
+                    id,
+                    varian,
+                    jumlah_stok,
+                    produk!inner(
+                        id,
+                        nama,
+                        subkategori:id_subkategori(
+                            subkategori,
+                            kategori:id_kategori(kategori)
+                        )
+                    )`, { count: 'exact' })
+                .order('produk(nama)', { ascending: true })
+                .range(offset, offset + pageSize - 1);
 
-            if (uniqueResults.length === 0) {
-                modalProductTable.innerHTML = `
-                    <tr class="no-products">
-                        <td colspan="3" class="text-center text-muted">
-                            Tidak ada produk ditemukan
-                        </td>
-                    </tr>`;
-                return;
-            }
+            const { data, error, count: queryCount } = await query;
+            if (error) throw error;
 
-            // Get existing variant IDs if in edit mode
-            const existingVariantIds = isEditMode && logData ? 
-                logData.items.map(item => item.produk_varian.id) : 
-                [];
-
-            uniqueResults.forEach(variant => {
-                const isExisting = existingVariantIds.includes(variant.id);
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>
-                        <input type="checkbox" 
-                               class="form-check-input product-checkbox" 
-                               data-product-id="${variant.produk.id}"
-                               data-variant-id="${variant.id}"
-                               ${isExisting ? 'checked' : ''}>
-                    </td>
-                    <td>${variant.produk.nama}</td>
-                    <td>
-                        ${variant.varian} 
-                        <span class="badge bg-light text-dark ms-2">
-                            Stok: ${variant.jumlah_stok || 0}
-                        </span>
-                    </td>
-                `;
-                modalProductTable.appendChild(row);
-            });
-
-            // Handle select all checkbox
-            const selectAllCheckbox = document.getElementById('selectAll');
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.addEventListener('change', function() {
-                const checkboxes = document.querySelectorAll('.product-checkbox:not(:disabled)');
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = this.checked;
-                });
-            });
-
-            return; // We've already handled the results
+            productVariants = data;
+            count = queryCount;
         }
-
-        // If no search term, proceed with normal loading
-        const { data: productVariants, error, count } = await query;
-
-        if (error) throw error;
 
         // Clear and populate the table
         modalProductTable.innerHTML = '';
@@ -1278,6 +1287,12 @@ async function performProductSearch() {
                         Tidak ada produk ditemukan
                     </td>
                 </tr>`;
+            
+            // Remove pagination if no results
+            const existingPagination = document.querySelector('#stockOpnameModal .pagination-container');
+            if (existingPagination) {
+                existingPagination.remove();
+            }
             return;
         }
 
@@ -1288,14 +1303,16 @@ async function performProductSearch() {
 
         productVariants.forEach(variant => {
             const isExisting = existingVariantIds.includes(variant.id);
+            if (isExisting) selectedVariants.add(variant.id);
+            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
                     <input type="checkbox" 
-                           class="form-check-input product-checkbox" 
-                           data-product-id="${variant.produk.id}"
-                           data-variant-id="${variant.id}"
-                           ${isExisting ? 'checked' : ''}>
+                        class="form-check-input product-checkbox" 
+                        data-product-id="${variant.produk.id}"
+                        data-variant-id="${variant.id}"
+                        ${selectedVariants.has(variant.id) ? 'checked' : ''}>
                 </td>
                 <td>${variant.produk.nama}</td>
                 <td>
@@ -1305,6 +1322,16 @@ async function performProductSearch() {
                     </span>
                 </td>
             `;
+            
+            // Add checkbox change handler
+            row.querySelector('input').addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    selectedVariants.add(variant.id);
+                } else {
+                    selectedVariants.delete(variant.id);
+                }
+            });
+            
             modalProductTable.appendChild(row);
         });
 
@@ -1312,18 +1339,104 @@ async function performProductSearch() {
         const selectAllCheckbox = document.getElementById('selectAll');
         selectAllCheckbox.checked = false;
         selectAllCheckbox.addEventListener('change', function() {
-            const checkboxes = document.querySelectorAll('.product-checkbox:not(:disabled)');
+            const checkboxes = document.querySelectorAll('.product-checkbox');
             checkboxes.forEach(checkbox => {
                 checkbox.checked = this.checked;
+                const variantId = parseInt(checkbox.dataset.variantId);
+                if (this.checked) {
+                    selectedVariants.add(variantId);
+                } else {
+                    selectedVariants.delete(variantId);
+                }
             });
         });
+
+        // Remove existing pagination controls if they exist
+        const existingPagination = document.querySelector('#stockOpnameModal .pagination-container');
+        if (existingPagination) {
+            existingPagination.remove();
+        }
+
+        // Add pagination controls if needed
+        if (count > pageSize) {
+            const totalPages = Math.ceil(count / pageSize);
+            const paginationContainer = document.createElement('div');
+            paginationContainer.className = 'pagination-container d-flex justify-content-between align-items-center mt-3';
+            
+            // Generate page numbers
+            let startPage = Math.max(1, page - 2);
+            let endPage = Math.min(totalPages, page + 2);
+            
+            if (endPage - startPage < 4) {
+                if (page < 3) {
+                    endPage = Math.min(5, totalPages);
+                } else {
+                    startPage = Math.max(1, totalPages - 4);
+                }
+            }
+            
+            paginationContainer.innerHTML = `
+            <div class="text-muted small">
+                Menampilkan ${offset + 1}-${Math.min(offset + pageSize, count)} dari ${count} produk
+            </div>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item ${page === 1 ? 'disabled' : ''}">
+                        <button class="page-link" data-page="${page - 1}">
+                            &laquo;
+                        </button>
+                    </li>
+                    ${Array.from({length: endPage - startPage + 1}, (_, i) => {
+                        const pageNum = startPage + i;
+                        return `
+                            <li class="page-item ${pageNum === page ? 'active' : ''}">
+                                <button class="page-link" data-page="${pageNum}">
+                                    ${pageNum}
+                                </button>
+                            </li>
+                        `;
+                    }).join('')}
+                    <li class="page-item ${page === totalPages ? 'disabled' : ''}">
+                        <button class="page-link" data-page="${page + 1}">
+                            &raquo;
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+            <div class="ms-3">
+                <select class="form-select form-select-sm page-size-selector">
+                    <option value="10" ${pageSize === 10 ? 'selected' : ''}>10 per halaman</option>
+                    <option value="25" ${pageSize === 25 ? 'selected' : ''}>25 per halaman</option>
+                    <option value="50" ${pageSize === 50 ? 'selected' : ''}>50 per halaman</option>
+                </select>
+            </div>
+            `;
+            
+            // Insert pagination after the table
+            modalProductTable.closest('table').parentNode.appendChild(paginationContainer);
+            
+            // Add event listeners
+            paginationContainer.querySelectorAll('.page-link').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const newPage = parseInt(e.target.dataset.page);
+                    if (newPage >= 1 && newPage <= totalPages) {
+                        performProductSearch(newPage, pageSize);
+                    }
+                });
+            });
+            
+            paginationContainer.querySelector('.page-size-selector').addEventListener('change', (e) => {
+                const newPageSize = parseInt(e.target.value);
+                performProductSearch(1, newPageSize);
+            });
+        }
 
     } catch (error) {
         console.error('Error searching products:', error);
         modalProductTable.innerHTML = `
             <tr>
                 <td colspan="3" class="text-center text-danger">
-                    Gagal mencari produk. Silakan coba lagi.
+                    Gagal memuat daftar produk. Silakan coba lagi.
                 </td>
             </tr>`;
     }
@@ -1358,7 +1471,7 @@ function clearProductSearch() {
         JSON.parse(modal.dataset.logData) : 
         null;
     
-    // Get the current page size from the selector (default to 10 if not found)
+    // Get the current page size from the selector (default 10)
     const pageSizeSelector = document.querySelector('#stockOpnameModal .page-size-selector');
     const pageSize = pageSizeSelector ? parseInt(pageSizeSelector.value) : 10;
     
@@ -1390,6 +1503,29 @@ document.addEventListener('DOMContentLoaded', async() => {
     // Initialize modal
     stockOpnameModal = new bootstrap.Modal(document.getElementById('stockOpnameModal'));
 
+    // close modal
+    document.getElementById('stockOpnameModal').addEventListener('hidden.bs.modal', function() {
+        // Only clear selections if the form was submitted
+        if (this.dataset.preserveSelections !== "true") {
+            selectedVariants.clear();
+        }
+        delete this.dataset.preserveSelections;
+        
+        // Reset search input
+        document.getElementById('searchInput').value = '';
+        updateProductSearchIcon();
+        
+        // Reset the form
+        document.getElementById('tanggal').value = toLocalISOString(new Date());
+        document.querySelector('#productsTable tbody').innerHTML = '';
+        
+        // Remove any existing pagination controls
+        const existingPagination = document.querySelector('#stockOpnameModal .pagination-container');
+        if (existingPagination) {
+            existingPagination.remove();
+        }
+    });
+
     document.getElementById('createLogButton').addEventListener('click', () => {
         prepareModal('add');
         stockOpnameModal.show();
@@ -1405,17 +1541,26 @@ document.addEventListener('DOMContentLoaded', async() => {
                 if (document.getElementById('searchIcon').innerHTML.includes('bi-x')) {
                     clearProductSearch();
                 } else {
-                    performProductSearch();
+                    // Get current page size
+                    const pageSizeSelector = document.querySelector('#stockOpnameModal .page-size-selector');
+                    const pageSize = pageSizeSelector ? parseInt(pageSizeSelector.value) : 10;
+                    performProductSearch(1, pageSize);
                 }
             } else {
-                performProductSearch();
+                // Get current page size
+                const pageSizeSelector = document.querySelector('#stockOpnameModal .page-size-selector');
+                const pageSize = pageSizeSelector ? parseInt(pageSizeSelector.value) : 10;
+                performProductSearch(1, pageSize);
             }
         });
-        
+
         searchInput.addEventListener('keyup', (e) => {
             updateProductSearchIcon();
             if (e.key === 'Enter') {
-                performProductSearch();
+                // Get current page size
+                const pageSizeSelector = document.querySelector('#stockOpnameModal .page-size-selector');
+                const pageSize = pageSizeSelector ? parseInt(pageSizeSelector.value) : 10;
+                performProductSearch(1, pageSize);
             }
         });
         

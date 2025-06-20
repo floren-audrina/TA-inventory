@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    <meta charset="UTF-8">
+    <title>Bakul</title>
+    <style>
+        /* Custom CSS for better spacing and borders */
+        .form-container {
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f8f9fa;
+        }
+
+        .table-container {
+            overflow-x: auto; /* Add horizontal scroll for small screens */
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border: 1px solid #dee2e6;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .btn-edit {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .btn-edit:hover {
+            background-color: #0b5ed7;
+        }
+
+        /* Custom toast styling */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+        .modal-content {
+            background-color: #d1d1d1;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .modal-header {
+            border-bottom: none;
+        }
+        .unpaid-notice-banner {
+            background-color: #f8d7da;
+            color: #842029;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+        }
+
+        .unpaid-notice-banner .btn-close {
+            filter: invert(1);
+        }
+    </style>
+  <script type="module" crossorigin src="/TA-inventory/bakul.js"></script>
+  <link rel="modulepreload" crossorigin href="/TA-inventory/modulepreload-polyfill.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/db_conn.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/auth.js">
+  <link rel="modulepreload" crossorigin href="/TA-inventory/import.js">
+</head>
+<body>
+    <div class="container-fluid">
+        <div id="navbar"></div>
+        
+
+        <!-- Toast Container -->
+        <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
+            <!-- Toast messages will be dynamically inserted here -->
+        </div>
+
+        <div class="container" id="main-content">
+            <div id="unpaidBannerRow" class="row mb-3">
+                <div id="unpaidBanner"></div>
+            </div>
+            <h2 class="mb-4">Bakul</h2>
+
+            <div class="d-flex justify-content-between mb-3">
+                <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#bakulModal">
+                    <i class="bi bi-plus"></i>Tambah Bakul
+                </button>
+                <div class="col-md-4 position-relative">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Cari data...">
+                        <button class="btn btn-outline-secondary" type="button" id="searchButton">
+                            <span id="searchIcon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
+                                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                                </svg>
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filter berdasarkan -->
+            <div class="mb-3">
+                <strong>Filter berdasarkan:</strong>
+                <div class="form-check form-check-inline ms-2">
+                    <input class="form-check-input" type="radio" name="filterGroup" id="filterKota" value="kota">
+                    <label class="form-check-label" for="filterKota">Kota</label>
+                </div>
+            </div>
+
+            <!-- Filter collapsible section -->
+            <div class="card mb-3 d-none" id="filterCard">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center" style="cursor: pointer" data-bs-toggle="collapse" href="#filterCollapse">
+                    <h6 class="mb-0">Filter Produk</h6>
+                    <span class="collapse-icon">▼</span>
+                </div>
+                <div class="collapse show" id="filterCollapse">
+                    <div class="card-body" id="filterOptionsContainer">
+                        <!-- Filter content will be injected here based on radio selection -->
+                        <!-- <div class="card-footer bg-light">
+                            <button class="btn btn-sm btn-primary me-2" id="applyFilter">Terapkan</button>
+                            <button class="btn btn-sm btn-outline-secondary" id="resetFilter">Reset</button>
+                        </div> -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="table-container mt-4">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nama</th>
+                            <th>No. HP</th>
+                            <th>Kota</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bakulTableBody">
+                        <!-- Data will be inserted dynamically here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modal for Adding Supplier -->
+        <div class="modal fade" id="bakulModal" tabindex="-1" aria-labelledby="bakulModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="bakulModalLabel">Tambah Bakul</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="bakulForm">
+                            <div class="mb-3">
+                                <label for="nama" class="form-label">Nama</label>
+                                <input type="text" class="form-control" id="nama" name="nama" required>
+                            </div>
+        
+                            <div class="mb-3">
+                                <label for="no_hp" class="form-label">No. HP</label>
+                                <input type="text" class="form-control" id="no_hp" name="no_hp" required>
+                            </div>
+        
+                            <div class="mb-3">
+                                <label for="kota" class="form-label">Kota</label>
+                                <select class="form-select" id="kota" name="kota" required></select>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                        <button type="submit" class="btn btn-primary" form="bakulForm" id="submitButton">Tambah</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

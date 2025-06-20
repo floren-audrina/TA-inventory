@@ -125,152 +125,157 @@
     </style>
 </head>
 <body>
-    <div id="navbar"></div>
-    <script type="module">
-        import { loadNavbar } from './src/navbarLoad.js';
-        loadNavbar();
-    </script>
+    <div class="container-fluid">
+        <div id="navbar"></div>
+        <script type="module">
+            fetch("navbar.html")
+                .then(response => response.text())
+                .then(async (html) => {
+                    document.getElementById("navbar").innerHTML = html;
+                    const navbar = await import('./src/navbar.js');
+                    navbar.setupLogout(); 
+                })
+                .catch(error => console.error('Error loading navbar:', error));
+        </script>
 
-    <div class="container mt-4" id="main-content">
-        <div id="unpaidBannerRow" class="row mb-3">
-            <div id="unpaidBanner"></div>
+
+        <div class="container" id="main-content">
+            <div id="unpaidBannerRow" class="row mb-3">
+                <div id="unpaidBanner"></div>
+            </div>
+            <h2 class="mb-4">Produk</h2>
+            <div class="d-flex justify-content-between mb-3">
+                <button type="button" class="btn btn-primary" id="addProductBtn">
+                    <i class="bi bi-plus"></i>Tambah Produk
+                </button>
+                <div class="col-md-4 position-relative">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" placeholder="Cari produk...">
+                        <button class="btn btn-outline-secondary" type="button" id="searchButton">
+                            <span id="searchIcon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
+                                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                                </svg>
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- <div class="d-flex justify-content-end mb-2">
+                <span>Filter berdasarkan ▾</span>
+            </div> -->
+
+            <!-- Filter berdasarkan -->
+            <div class="mb-3">
+                <strong>Filter berdasarkan:</strong>
+                <div class="form-check form-check-inline ms-2">
+                    <input class="form-check-input" type="radio" name="filterGroup" id="filterKategori" value="kategori">
+                    <label class="form-check-label" for="filterKategori">Kategori</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="filterGroup" id="filterSupplier" value="supplier">
+                    <label class="form-check-label" for="filterSupplier">Supplier</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="filterGroup" id="filterVarian" value="varian">
+                    <label class="form-check-label" for="filterVarian">Varian</label>
+                </div>
+            </div>
+
+            <!-- Filter collapsible section -->
+            <div class="card mb-3 d-none" id="filterCard">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center" style="cursor: pointer" data-bs-toggle="collapse" href="#filterCollapse">
+                    <h6 class="mb-0">Filter Produk</h6>
+                    <span class="collapse-icon">▼</span>
+                </div>
+                <div class="collapse show" id="filterCollapse">
+                    <div class="card-body" id="filterOptionsContainer">
+            
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="table-container mt-1">
+                <table class="table table-bordered table-striped" style="background-color: #ddd;">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nama</th>
+                            <th>Kategori (Sub)</th>
+                            <th>Varian</th>
+                            <th>Supplier</th>
+                            <th>Qty. Minimum</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productTableBody"></tbody>
+                </table>
+            </div>
         </div>
-        <h2 class="mb-4">Produk</h2>
-        <div class="d-flex justify-content-between mb-3">
-            <button type="button" class="btn btn-primary" id="addProductBtn">
-                Tambah Produk
-            </button>
-            <div class="col-md-4 position-relative">
-                <div class="input-group">
-                    <input type="text" class="form-control" id="searchInput" placeholder="Cari produk...">
-                    <button class="btn btn-outline-secondary" type="button" id="searchButton">
-                        <span id="searchIcon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16">
-                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-                            </svg>
-                        </span>
-                    </button>
+
+        <!-- Product Modal -->
+        <div class="modal fade" id="productModal" tabindex="-1" aria-labelledby="productModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="productModalLabel">Tambah Produk</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="productForm">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="nama_produk" class="form-label">Nama Produk</label>
+                                    <input type="text" class="form-control" id="nama_produk" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="subkategori" class="form-label">Subkategori</label>
+                                    <select class="form-select" id="subkategori" required></select>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="supplier" class="form-label">Supplier</label>
+                                    <select class="form-select" id="supplier" required></select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="qty_minimum" class="form-label">Qty. Minimum</label>
+                                    <input type="number" class="form-control" id="qty_minimum" step="1" required>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Varian Produk</label>
+                                <div class="table-responsive">
+                                    <table class="table" id="variantsTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Nama Varian</th>
+                                                <th>Harga Standar</th>
+                                                <th>Jumlah Stok</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="variantsTableBody"></tbody>
+                                    </table>
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm mt-2" id="addVariantBtn">+ Tambah Varian</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                        <button type="button" class="btn btn-primary" id="saveProductBtn">Simpan</button>
+                    </div>
                 </div>
             </div>
         </div>
-        <!-- <div class="d-flex justify-content-end mb-2">
-            <span>Filter berdasarkan ▾</span>
-        </div> -->
 
-        <!-- Filter berdasarkan -->
-        <div class="mb-3">
-            <strong>Filter berdasarkan:</strong>
-            <div class="form-check form-check-inline ms-2">
-                <input class="form-check-input" type="radio" name="filterGroup" id="filterKategori" value="kategori">
-                <label class="form-check-label" for="filterKategori">Kategori</label>
-            </div>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="filterGroup" id="filterSupplier" value="supplier">
-                <label class="form-check-label" for="filterSupplier">Supplier</label>
-            </div>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="filterGroup" id="filterVarian" value="varian">
-                <label class="form-check-label" for="filterVarian">Varian</label>
-            </div>
+        <!-- Toast Container -->
+        <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
+            <!-- Toast messages will be dynamically inserted here -->
         </div>
-
-        <!-- Filter collapsible section -->
-        <div class="card mb-3 d-none" id="filterCard">
-            <div class="card-header bg-light d-flex justify-content-between align-items-center" style="cursor: pointer" data-bs-toggle="collapse" href="#filterCollapse">
-                <h6 class="mb-0">Filter Produk</h6>
-                <span class="collapse-icon">▼</span>
-            </div>
-            <div class="collapse show" id="filterCollapse">
-                <div class="card-body" id="filterOptionsContainer">
-                    <!-- Filter content will be injected here based on radio selection -->
-                    <!-- <div class="card-footer bg-light">
-                        <button class="btn btn-sm btn-primary me-2" id="applyFilter">Terapkan</button>
-                        <button class="btn btn-sm btn-outline-secondary" id="resetFilter">Reset</button>
-                    </div> -->
-                </div>
-            </div>
-        </div>
-
-
-        <div class="table-container mt-1">
-            <table class="table table-bordered table-striped" style="background-color: #ddd;">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Nama</th>
-                        <th>Kategori (Sub)</th>
-                        <th>Varian</th>
-                        <th>Supplier</th>
-                        <th>Qty. Minimum</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
-                <tbody id="productTableBody"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Product Modal -->
-    <div class="modal fade" id="productModal" tabindex="-1" aria-labelledby="productModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="productModalLabel">Tambah Produk</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="productForm">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="nama_produk" class="form-label">Nama Produk</label>
-                                <input type="text" class="form-control" id="nama_produk" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="subkategori" class="form-label">Subkategori</label>
-                                <select class="form-select" id="subkategori" required></select>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="supplier" class="form-label">Supplier</label>
-                                <select class="form-select" id="supplier" required></select>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="qty_minimum" class="form-label">Qty. Minimum</label>
-                                <input type="number" class="form-control" id="qty_minimum" step="1" required>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Varian Produk</label>
-                            <div class="table-responsive">
-                                <table class="table" id="variantsTable">
-                                    <thead>
-                                        <tr>
-                                            <th>Nama Varian</th>
-                                            <th>Harga Standar</th>
-                                            <th>Jumlah Stok</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="variantsTableBody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-secondary btn-sm mt-2" id="addVariantBtn">+ Tambah Varian</button>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
-                    <button type="button" class="btn btn-primary" id="saveProductBtn">Simpan</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Toast Container -->
-    <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
-        <!-- Toast messages will be dynamically inserted here -->
     </div>
 
     <script type="module" src="./src/product.js"></script>

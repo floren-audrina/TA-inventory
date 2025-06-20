@@ -1,6 +1,6 @@
 import supabase from './db_conn.js';
-import { processEntry, displayUnpaidNotice } from './import.js';
 import { checkAuth, initAuthStateListener } from './auth.js';
+import { processEntry, displayUnpaidNotice } from './import.js';
 
 initAuthStateListener();
 
@@ -75,8 +75,10 @@ function showToast(message, type = 'success') {
 
 function showStockError(variantId, message) {
     const row = document.querySelector(`tr[data-variant-id="${variantId}"]`);
-    if (!row) return;
-    
+    if (!row) {
+        console.log("no row");
+        return;
+    }
     // Add error styling
     row.classList.add('table-danger');
     
@@ -655,32 +657,98 @@ async function loadVariants(productSelect, variantSelect, row, preSelectedVarian
     }
 
     try {
-        // Load variants for the selected product
+        // Load variants with their stock and price information
         const { data: variants, error } = await supabase
             .from('produk_varian')
-            .select('id, varian, harga_standar')
+            .select('id, varian, harga_standar, jumlah_stok, stok_reservasi')
             .eq('id_produk', selectedProductId)
             .order('varian', { ascending: true });
 
         if (error) throw error;
 
+        // Create stock info element if it doesn't exist
+        let stockInfo = row.querySelector('.stock-info');
+        if (!stockInfo) {
+            stockInfo = document.createElement('div');
+            stockInfo.className = 'stock-info small text-muted mt-1';
+            row.querySelector('td:nth-child(3)').appendChild(stockInfo);
+        }
+
         // Update variant select options
         variantSelect.innerHTML = `
             <option value="" ${!preSelectedVariantId ? 'selected' : ''} disabled>Pilih Varian</option>
-            ${variants.map(v => 
-                `<option value="${v.id}" data-price="${v.harga_standar}"
-                    ${preSelectedVariantId === v.id ? 'selected' : ''}>
-                    ${v.varian}
-                </option>`
-            ).join('')}
+            ${variants.map(v => {
+                // const availableStock = v.jumlah_stok - v.stok_reservasi;
+                return `<option value="${v.id}" 
+                        data-price="${v.harga_standar}" 
+                        data-stock="${v.jumlah_stok}" 
+                        data-reserved="${v.stok_reservasi}">
+                        ${v.varian}
+                    </option>`;
+            }).join('')}
         `;
-        
+        // (Stok: ${availableStock})
         variantSelect.disabled = false;
+
+        // Add event listener to update price and stock info when variant changes
+        variantSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                row.dataset.variantId = selectedOption.value;
+                // Set the price value
+                const priceInput = row.querySelector('.price');
+                const price = selectedOption.getAttribute('data-price') || 0;
+                priceInput.value = price;
+                
+                // Manually trigger the input event to recalculate
+                priceInput.dispatchEvent(new Event('input'));
+                
+                // Update stock info
+                updateStockInfo(this, stockInfo);
+
+                clearStockError(selectedOption.value);
+                validateStockOnQuantityChange(row);
+            }
+        });
+
+        // If there's a pre-selected variant, trigger the change event
+        if (preSelectedVariantId) {
+            const option = variantSelect.querySelector(`option[value="${preSelectedVariantId}"]`);
+            if (option) {
+                variantSelect.value = preSelectedVariantId;
+                
+                // Set the price immediately
+                const priceInput = row.querySelector('.price');
+                const price = option.getAttribute('data-price') || 0;
+                priceInput.value = price;
+                
+                // Trigger the change event to update everything
+                variantSelect.dispatchEvent(new Event('change'));
+            }
+        }
 
     } catch (error) {
         console.error('Error loading variants:', error);
         variantSelect.innerHTML = '<option value="" selected disabled>Error memuat varian</option>';
     }
+}
+
+function updateStockInfo(selectElement, stockInfoElement) {
+    const selectedOption = selectElement.options[selectElement.selectedIndex];
+    if (!selectedOption || !selectedOption.value) {
+        stockInfoElement.textContent = '';
+        return;
+    }
+
+    const totalStock = selectedOption.getAttribute('data-stock') || 0;
+    const reservedStock = selectedOption.getAttribute('data-reserved') || 0;
+    const availableStock = totalStock - reservedStock;
+
+    stockInfoElement.innerHTML = `
+        <span class="badge bg-success">Tersedia: ${availableStock}</span>
+        <span class="badge bg-warning">Reservasi: ${reservedStock}</span>
+        <span class="badge bg-info">Total: ${totalStock}</span>
+    `;
 }
 
 async function addItemRow(productId = null, variantId = null) {
@@ -718,6 +786,7 @@ async function addItemRow(productId = null, variantId = null) {
             </td>
             <td>
                 <input type="number" class="form-control quantity" min="1" value="">
+                <div class="stock-info small text-muted mt-1"></div>
             </td>
             <td>
                 <input type="number" class="form-control price" min="0" step="100" value="0">
@@ -736,24 +805,13 @@ async function addItemRow(productId = null, variantId = null) {
         
         productSelect.addEventListener('change', async function() {
             await loadVariants(productSelect, variantSelect, row, variantId);
-        });
-
-        variantSelect.addEventListener('change', function() {
-            row.dataset.variantId = this.value;
-            const selectedOption = variantSelect.options[variantSelect.selectedIndex];
-            const price = selectedOption.getAttribute('data-price') || 0;
-            console.log("price: ", price)
-            row.querySelector('.price').value = price;
-            row.querySelector('.price').dispatchEvent(new Event('input')); // to recalculate subtotal
-        });        
+        }); 
 
         // If product is pre-selected, trigger the change event to load variants
         if (productId) {
             // Set initial state before loading
             variantSelect.innerHTML = '<option value="" selected disabled>Memuat varian...</option>';
             variantSelect.disabled = true;
-            
-            // Trigger the load
             productSelect.dispatchEvent(new Event('change'));
         }
 
@@ -769,6 +827,7 @@ function createItemRow(item, currentStatus) {
     const row = document.createElement('tr');
     row.dataset.itemId = item.id;
     row.dataset.variantId = item.produk_varian.id;
+    row.dataset.originalQty = item.qty_dipesan;
 
     const disableRemove = ['diambil', 'dibayar', 'selesai'].includes(currentStatus);
     
@@ -791,6 +850,7 @@ function createItemRow(item, currentStatus) {
             <input type="number" class="form-control quantity" 
                    value="${item.qty_dipesan}" min="1" 
                    ${currentStatus !== 'dipesan' ? 'readonly' : ''}>
+            <div class="stock-info small text-muted mt-1"></div>
         </td>
         <td>
             <input type="number" class="form-control price" 
@@ -808,6 +868,7 @@ function createItemRow(item, currentStatus) {
     if (currentStatus === 'dipesan') {
         const productSelect = row.querySelector('.product-select');
         const variantSelect = row.querySelector('.variant-select');
+        const stockInfo = row.querySelector('.stock-info');
         
         // Set up product change handler
         productSelect.addEventListener('change', async function() {
@@ -817,6 +878,22 @@ function createItemRow(item, currentStatus) {
         // Immediately load variants for the current product
         setTimeout(async () => {
             await loadVariants(productSelect, variantSelect, row, item.produk_varian.id);
+            
+            // Manually update stock info for the selected variant
+            const { data: variant, error } = await supabase
+                .from('produk_varian')
+                .select('jumlah_stok, stok_reservasi')
+                .eq('id', item.produk_varian.id)
+                .single();
+            
+            if (!error && variant) {
+                const availableStock = variant.jumlah_stok - variant.stok_reservasi;
+                stockInfo.innerHTML = `
+                    <span class="badge bg-info">Total: ${variant.jumlah_stok}</span>
+                    <span class="badge bg-warning">Reservasi: ${variant.stok_reservasi}</span>
+                    <span class="badge bg-success">Tersedia: ${availableStock}</span>
+                `;
+            }
         }, 0);
     }
 
@@ -824,38 +901,72 @@ function createItemRow(item, currentStatus) {
     return row;
 }
 
-function setupRowCalculations(row) {
-    // Calculate subtotal for the row and update total
-    const calculateSubtotal = () => {
-        const price = parseFloat(row.querySelector('.price').value) || 0;
-        const quantity = parseInt(row.querySelector('.quantity').value) || 0;
-        const subtotal = Math.round(price * quantity); // → 38000
-        console.log(subtotal);
-        
-        // Update the subtotal display (either textContent or value depending on your row type)
-        const subtotalElement = row.querySelector('.subtotal');
-        if (subtotalElement.tagName === 'TD') {
-            subtotalElement.textContent = formatCurrency(subtotal);
-        } else {
-            subtotalElement.value = subtotal;
-        }
-        
-        calculateTotal();
-    };
-
-    // Set up event listeners
-    row.querySelector('.price').addEventListener('input', calculateSubtotal);
-    row.querySelector('.quantity').addEventListener('input', calculateSubtotal);
+function validateStockOnQuantityChange(row) {
+    const quantityInput = row.querySelector('.quantity');
+    const variantSelect = row.querySelector('.variant-select');
     
-    // Initial calculation
-    calculateSubtotal();
+    if (!quantityInput || !variantSelect || !variantSelect.value) {
+        return;
+    }
+    
+    const selectedOption = variantSelect.options[variantSelect.selectedIndex];
+    if (!selectedOption || !selectedOption.value) {
+        return;
+    }
+    
+    const totalStock = parseInt(selectedOption.getAttribute('data-stock')) || 0;
+    const reservedStock = parseInt(selectedOption.getAttribute('data-reserved')) || 0;
+    const availableStock = totalStock - reservedStock;
+    const requestedQty = parseInt(quantityInput.value) || 0;
+    const variantId = selectedOption.value;
+    
+    // Get the original quantity from the row data if it exists
+    const originalQty = parseInt(row.dataset.originalQty) || 0;
+    
+    // Calculate the net change in quantity
+    const qtyChange = requestedQty - originalQty;
+    
+    // Only show error if the net change would make available stock negative
+    if (qtyChange > availableStock) {
+        showStockError(variantId, `Stok tidak mencukupi! Tersedia: ${availableStock}, Perubahan: +${qtyChange}`);
+    } else {
+        clearStockError(variantId);
+    }
+}
 
-    // Remove row button
+function setupRowCalculations(row) {
+    const quantityInput = row.querySelector('.quantity');
+    const priceInput = row.querySelector('.price');
+    const subtotalCell = row.querySelector('.subtotal');
+    
+    function calculateSubtotal() {
+        const quantity = parseFloat(quantityInput.value) || 0;
+        const price = parseFloat(priceInput.value) || 0;
+        const subtotal = quantity * price;
+        subtotalCell.textContent = formatCurrency(subtotal);
+        calculateTotal(); // Assuming you have this function
+    }
+    
+    // Quantity input handler with stock validation
+    quantityInput.addEventListener('input', function() {
+        calculateSubtotal();
+        validateStockOnQuantityChange(row); // Add stock validation
+    });
+    
+    // Price input handler
+    priceInput.addEventListener('input', calculateSubtotal);
+    
+    // Remove button handler
     const removeBtn = row.querySelector('.remove-product, .remove-item');
     if (removeBtn) {
-        removeBtn.addEventListener('click', () => {
+        removeBtn.addEventListener('click', function() {
+            // Clear any stock errors before removing
+            const variantSelect = row.querySelector('.variant-select');
+            if (variantSelect && variantSelect.value) {
+                clearStockError(variantSelect.value);
+            }
             row.remove();
-            calculateTotal();
+            calculateTotal(); // Assuming you have this function
         });
     }
 }
@@ -922,15 +1033,23 @@ function collectFormData() {
 
 // ========== CRUD Operations ==========
 async function saveSale() {
+    const saveBtn = document.getElementById('saveSaleBtn');
+    const originalBtnText = saveBtn.innerHTML;
     const mode = document.getElementById('saleModal').dataset.mode;
     
     try {
+        // Set loading state
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Menyimpan...
+        `;
+
         if (mode === 'edit') {
             await updateSale();
             saleModal.hide();
             await renderOngoingSales();
         } else {
-            // For create, we need to check for stock errors first
             const hasStockError = await createSale();
             if (!hasStockError) {
                 saleModal.hide();
@@ -940,6 +1059,10 @@ async function saveSale() {
     } catch (error) {
         console.error('Save failed:', error);
         showToast('Gagal menyimpan pesanan', 'error');
+    } finally {
+        // Reset button state
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnText;
     }
 }
 
@@ -964,12 +1087,13 @@ async function createSale() {
             } catch (error) {
                 hasStockError = true;
                 errorMessages.push(error.message);
-                showStockError(item.variantId, error.message);
+                // showStockError(item.variantId, error.message);
             }
         }
 
         if (hasStockError) {
             showToast('Beberapa stok tidak mencukupi. Periksa daftar produk.', 'error');
+            console.log(errorMessages.join('\n'), 'error')
             return true; // Return true to indicate there was a stock error
         }
         else {
@@ -1133,30 +1257,6 @@ async function updateSale() {
     } catch (error) {
         console.error('Update order error:', error);
         showToast('Gagal memperbarui pesanan: ' + error.message, 'error');
-    }
-}
-
-async function deleteSale(saleId) {
-    if (!confirm('Apakah Anda yakin ingin menghapus penjualan ini?')) return;
-    
-    try {
-        // First delete items
-        await supabase
-            .from('item_pesanan_penjualan')
-            .delete()
-            .eq('id_jual', saleId);
-
-        // Then delete sale
-        await supabase
-            .from('pesanan_penjualan')
-            .delete()
-            .eq('id', saleId);
-
-        // await fetchSales();
-        showToast('Penjualan berhasil dihapus', 'success');
-    } catch (error) {
-        console.error('Error deleting sale:', error);
-        showToast('Gagal menghapus penjualan', 'error');
     }
 }
 
@@ -1412,7 +1512,7 @@ function setupPreparationCheckbox(checkbox, sale) {
     checkbox.addEventListener('change', async function() {
         const newValue = this.checked;
         const action = newValue ? 'menandai' : 'membatalkan tanda';
-        const confirmed = confirm(`Yakin ingin ${action} persiapan selesai untuk pesanan #${sale.id}?`);
+        const confirmed = confirm(`Apakah Anda akin ingin ${action} persiapan selesai untuk pesanan #${sale.id}?`);
         
         if (!confirmed) {
             this.checked = !newValue; // Revert the change
@@ -1452,8 +1552,8 @@ async function renderHistoryTable(
     startDate = null, 
     endDate = null, 
     bakulFilter = null, 
-    pengambilFilter = null, 
-    paymentFilter = null
+    paymentFilter = null,
+    pengambilFilter = null
 ) {
     const historyTableBody = document.querySelector('#history tbody');
     if (!historyTableBody) return;
@@ -1545,7 +1645,7 @@ async function renderHistoryTable(
                     <td>${formattedPaymentDate}</td>
                     <td>${order.alat_pembayaran || '-'}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary detail-btn me-1" data-order-id="${order.id}">Detail</button>
+                        <button class="btn btn-sm btn-outline-primary detail-btn me-1 mb-1" data-order-id="${order.id}">Detail</button>
                         <button class="btn btn-sm btn-outline-secondary reprint-btn" data-order-id="${order.id}">Cetak</button>
                     </td>
                 `;
@@ -1948,16 +2048,17 @@ function resetFilters() {
     document.getElementById('takerSelect').value = '';
 
     // Hide all filter sections
-    document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
-        section.classList.add('d-none');
-    });
+    // document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
+    //     section.classList.add('d-none');
+    // });
 
-    // Collapse the filter section
-    const filterCollapse = document.getElementById('filterCollapse');
-    const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
-    if (collapseInstance && !filterCollapse.classList.contains('collapse')) {
-        collapseInstance.hide();
-    }
+    // // Collapse the filter section
+    // const filterCollapse = document.getElementById('filterCollapse');
+    // const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
+    // if (collapseInstance && !filterCollapse.classList.contains('collapse')) {
+    //     collapseInstance.hide();
+    // }
+    document.getElementById('filterCard').classList.add('d-none');
 
     // Refresh the history list without filters
     renderHistoryTable();
@@ -2018,8 +2119,8 @@ async function printReceipt(id = null) {
         const receiptHtml = generateReceiptHtml(order);
         printReceiptHtml(receiptHtml);
     } catch (error) {
-        console.error('Error printing receipt:', error);
-        showToast(error.message || 'Gagal mencetak struk', 'error');
+        console.error('Error printing receipt:', error + error.message);
+        showToast('Gagal mencetak struk');
     }
 }
 
@@ -2040,7 +2141,7 @@ async function exportToPdf() {
         pdfBtn.disabled = true;
 
         // Fetch order data
-        const order = await fetchOrderData(orderId);
+        let order = await fetchOrderData(orderId);
 
         if (!order.tanggal_dibayar || !order.total_dibayarkan || !order.alat_pembayaran) {
             const paymentData = collectFormData();
@@ -2343,7 +2444,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("data: ", itemsData);
 
             try {
-                if (!confirm('Yakin ingin membatalkan pesanan ini?')) {
+                if (!confirm('Apakah Anda yakin ingin membatalkan pesanan ini?')) {
                     return;
                 }
 
@@ -2462,7 +2563,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 //     await openSaleModal('edit', saleId);
 // };
 
-window.deleteSale = deleteSale;
 window.showSaleDetail = function(saleId) {
     // Implementation for showing sale details
     console.log('Showing details for sale:', saleId);

@@ -1,18 +1,18 @@
 import supabase from './db_conn.js';
-import { processEntry, updateVariantStock, displayUnpaidNotice } from './import.js';
 import { checkAuth, initAuthStateListener } from './auth.js';
+import { processEntry, updateVariantStock, displayUnpaidNotice } from './import.js';
 
 initAuthStateListener();
 
 (async () => {
-    // Auth check - will redirect if not logged in
+    // redirect to login page if not logged in
     await checkAuth(); 
 })();
 
-// ========== Global Variables ==========
+// global var
 let orderModal;
 
-// ========== Utility Functions ==========
+// utility
 function getStatusColor(status) {
     const colorMap = {
         'dipesan': 'secondary',
@@ -245,7 +245,7 @@ function collectFormData() {
                 rowId: row.dataset.itemId || null
             };
 
-            // Only include these fields if in edit mode and status is diterima or beyond
+            // additional item data when status != dipesan
             if (mode === 'edit' && currentStatus !== 'dipesan') {
                 itemData.receivedQty = parseInt(row.querySelector('.received-qty')?.value) || 0;
                 itemData.brokenQty = parseInt(row.querySelector('.broken-qty')?.value) || 0;
@@ -275,9 +275,17 @@ function collectFormData() {
 
 // SUBMIT FORM
 async function saveOrder() {
+    const saveBtn = document.getElementById('saveOrder');
+    const originalBtnText = saveBtn.innerHTML;
     const mode = document.getElementById('orderModal').dataset.mode;
     
     try {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Menyimpan...
+        `;
+
         if (mode === 'edit') {
             await updateOrder();
         } else {
@@ -289,6 +297,9 @@ async function saveOrder() {
     } catch (error) {
       console.error('Save failed:', error);
       showToast('Gagal menyimpan pesanan', 'error');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnText;
     }
 }
 
@@ -296,7 +307,7 @@ async function createOrder() {
     const formData = collectFormData();
     
     try {
-        // 1. Create order header
+        // pesanan_pembelian
         const { data: newOrder, error } = await supabase
             .from('pesanan_pembelian')
             .insert({
@@ -309,7 +320,7 @@ async function createOrder() {
 
         if (error) throw error;
   
-        // 2. Add items with variant IDs
+        // item_pesanan_pembelian
         const { error: itemsError } = await supabase
             .from('item_pesanan_pembelian')
             .insert(formData.items.map(item => ({
@@ -336,20 +347,20 @@ async function updateOrder() {
     const formData = collectFormData();
     
     try {
-        // 1. Prepare order update data
+        // prepare data for update
         const orderUpdateData = {
             tanggal_pesan: formData.orderDate,
             id_supplier: formData.supplierId,
             status_pesanan: formData.status
         };
 
-        // Add additional fields for 'diterima' status
+        // additional fields for 'diterima'
         if (formData.status === 'diterima') {
             orderUpdateData.tanggal_diterima = formData.receivedDate;
             orderUpdateData.lokasi_penerimaan = formData.receivingLocation;
             orderUpdateData.no_surat_jalan = formData.deliveryNoteNumber;
         }
-        // Add payment details for 'dibayar' status
+        // additional fields for 'dibayar' status
         else if (formData.status === 'dibayar') {
             orderUpdateData.tanggal_pembayaran = formData.paymentDate;
             orderUpdateData.total_dibayarkan = formData.paymentAmount;
@@ -364,53 +375,91 @@ async function updateOrder() {
 
         if (headerError) throw headerError;
 
-        // 2. Handle stock updates for received orders
+        // +jumlah_stok when diterima
         if (formData.status === "diterima") {
             for (const item of formData.items) {
-                if (item.receivedQty === undefined || item.brokenQty === undefined) {
-                    throw new Error('All items must have received and broken quantities when status is "diterima"');
+                if (item.receivedQty === undefined) {
+                    throw new Error('Received quantity is required for "diterima" status');
                 }
-
                 const receivedQty = Number(item.receivedQty) || 0;
-                const brokenQty = Number(item.brokenQty) || 0;
-                const netQty = receivedQty - brokenQty;
-
-                if (isNaN(receivedQty) || isNaN(brokenQty)) {
+                if (isNaN(receivedQty)) {
                     throw new Error('Quantities must be valid numbers');
                 }
 
-                let stockAdjustment = netQty;
-
-                // If this item already exists (i.e. has a rowId), fetch previous qty_diterima and qty_rusak
+                // Calculate stock adjustment
+                let stockAdjustment = receivedQty;
+                
+                // If editing existing item, find the difference
                 if (item.rowId) {
                     const { data: oldItem, error: fetchError } = await supabase
                         .from('item_pesanan_pembelian')
-                        .select('qty_diterima, qty_rusak')
+                        .select('qty_diterima')
                         .eq('id', item.rowId)
                         .single();
 
-                    if (fetchError) {
-                        throw new Error(`Failed to fetch previous item data: ${fetchError.message}`);
+                    if (!fetchError && oldItem?.qty_diterima) {
+                        const oldReceived = Number(oldItem.qty_diterima) || 0;
+                        stockAdjustment = receivedQty - oldReceived;
                     }
-
-                    const oldReceived = Number(oldItem.qty_diterima) || 0;
-                    const oldBroken = Number(oldItem.qty_rusak) || 0;
-                    const oldNetQty = oldReceived - oldBroken;
-
-                    stockAdjustment = netQty - oldNetQty;  // Only adjust the delta
                 }
 
-                // Update stock only if there's a change
+                // Apply only if there's a change
                 if (stockAdjustment !== 0) {
-                    const newStock = await updateVariantStock(item.variantId, stockAdjustment, 'pembelian');
+                    const newStock = await updateVariantStock(
+                        item.variantId, 
+                        stockAdjustment, // Only the difference
+                        'pembelian'
+                    );
                     if (newStock === null) {
                         throw new Error(`Failed to update stock for variant ${item.variantId}`);
                     }
                 }
+
+                // OLD
+                // if (item.receivedQty === undefined || item.brokenQty === undefined) {
+                //     throw new Error('All items must have received and broken quantities when status is "diterima"');
+                // }
+
+                // const receivedQty = Number(item.receivedQty) || 0;
+                // const brokenQty = Number(item.brokenQty) || 0;
+                // const netQty = receivedQty - brokenQty;
+
+                // if (isNaN(receivedQty) || isNaN(brokenQty)) {
+                //     throw new Error('Quantities must be valid numbers');
+                // }
+
+                // let stockAdjustment = netQty;
+
+                // // NOT new update
+                // if (item.rowId) {
+                //     const { data: oldItem, error: fetchError } = await supabase
+                //         .from('item_pesanan_pembelian')
+                //         .select('qty_diterima, qty_rusak')
+                //         .eq('id', item.rowId)
+                //         .single();
+
+                //     if (fetchError) {
+                //         throw new Error(`Failed to fetch previous item data: ${fetchError.message}`);
+                //     }
+
+                //     const oldReceived = Number(oldItem.qty_diterima) || 0;
+                //     const oldBroken = Number(oldItem.qty_rusak) || 0;
+                //     const oldNetQty = oldReceived - oldBroken;
+
+                //     stockAdjustment = netQty - oldNetQty; 
+                // }
+
+                // // update if there's difference
+                // if (stockAdjustment !== 0) {
+                //     const newStock = await updateVariantStock(item.variantId, stockAdjustment, 'pembelian');
+                //     if (newStock === null) {
+                //         throw new Error(`Failed to update stock for variant ${item.variantId}`);
+                //     }
+                // }
             }
         }
 
-        // 3. Process item updates
+        // update items
         const updates = [];
         const newItems = [];
         
@@ -420,7 +469,7 @@ async function updateOrder() {
                 qty_dipesan: item.quantity
             };
 
-            // Include additional fields for diterima/dibayar status
+            // additional
             if (formData.status !== 'dipesan') {
                 itemData.qty_diterima = item.receivedQty ?? null;
                 itemData.qty_rusak = item.brokenQty ?? null;
@@ -434,7 +483,6 @@ async function updateOrder() {
             }
         });
 
-        // 4. Execute updates
         if (updates.length > 0) {
             const { error: updateError } = await supabase
                 .from('item_pesanan_pembelian')
@@ -470,7 +518,7 @@ async function addProductRow(productId = null, variantId = null) {
     }
 
     try {
-        // Fetch products for this supplier
+        // only products from the supllierID
         const { data: products, error } = await supabase
             .from('produk')
             .select('id, nama')
@@ -509,7 +557,6 @@ async function addProductRow(productId = null, variantId = null) {
 
         tbody.appendChild(row);
 
-        // Set up product and variant handling
         const productSelect = row.querySelector('.product-select');
         const variantSelect = row.querySelector('.variant-select');
         
@@ -540,16 +587,17 @@ function createItemRow(item, currentStatus) {
 
     const disableRemove = ['diterima', 'dibayar', 'selesai'].includes(currentStatus);
     
+    console.log(item.produk_varian.produk.nama + item.produk_varian.produk.id);
     row.innerHTML = `
         <td>
             <select class="form-select product-select" disabled>
-                <option value="${item.produk_varian.id}" selected>
+                <option value="${item.produk_varian.produk.id}" selected>
                     ${item.produk_varian.produk.nama}
                 </option>
             </select>
         </td>
         <td>
-            <select class="form-select variant-select" ${currentStatus !== 'dipesan' ? 'disabled' : ''}>
+            <select class="form-select variant-select" disabled>
                 <option value="${item.produk_varian.id}" selected>
                     ${item.produk_varian.varian}
                 </option>
@@ -840,6 +888,7 @@ async function openOrderModal(mode = 'add', orderId = null) {
         await populateEditForm(orderId);
         document.getElementById('saveOrder').textContent = 'Update';
         const currentStatus = modalElement.dataset.currentStatus;
+        // remove add product button when not 'dipesan'
         if (addProductBtn) {
             addProductBtn.style.display = currentStatus === 'dipesan' ? 'block' : 'none';
         }
@@ -943,6 +992,7 @@ function setupModalEvents() {
     const saveOrderBtn = document.getElementById('saveOrder');
     const supplierSelect = document.getElementById('supplier');
     
+    // clear previous listeners
     addProductBtn.replaceWith(addProductBtn.cloneNode(true));
     saveOrderBtn.replaceWith(saveOrderBtn.cloneNode(true));
     supplierSelect.replaceWith(supplierSelect.cloneNode(true));
@@ -958,20 +1008,19 @@ function setupModalEvents() {
         }
     });
 
-    // Add supplier change listener
+    // if supplier is changed
     document.getElementById('supplier').addEventListener('change', async function() {
-        // Clear existing product rows
         document.querySelector('#productsTable tbody').innerHTML = '';
         
         // If we're in edit mode, don't auto-add products
-        const mode = document.getElementById('orderModal').dataset.mode;
-        if (mode === 'edit') return;
+        // const mode = document.getElementById('orderModal').dataset.mode;
+        // if (mode === 'edit') return;
         
         // Add a new empty product row for the new supplier
         // await addProductRow();
     });
 
-    // Add event delegation for remove buttons
+    // remove item
     document.querySelector('#productsTable tbody').addEventListener('click', function(e) {
         if (e.target.classList.contains('remove-item') || e.target.classList.contains('remove-product')) {
             e.target.closest('tr').remove();
@@ -1105,6 +1154,9 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
         `;
     }
 
+    document.getElementById('orderDate').disabled = (newStatus !== 'dipesan' && newStatus !== 'draft');
+    document.getElementById('supplier').disabled = (newStatus !== 'dipesan' && newStatus !== 'draft');
+
     // 2. Update row editability
     document.querySelectorAll('#productsTable tbody tr').forEach(row => {
         const qtyInput = row.querySelector('.quantity');
@@ -1115,7 +1167,8 @@ async function updateFormForStatus(newStatus, fieldValues = {}) {
         const deleteBtn = row.querySelector('.remove-item');
         
         qtyInput.readOnly = (newStatus !== 'dipesan');
-        variantSelect.disabled = (newStatus !== 'dipesan');
+        // variantSelect.disabled = (newStatus !== 'dipesan');
+        variantSelect.disabled = true;
         
         if (newStatus !== 'dipesan') {
             // Ensure columns exist
@@ -1393,11 +1446,11 @@ async function renderHistoryTable(startDate = null, endDate = null, supplierFilt
                     <td>${order.id}</td>
                     <td>${formattedOrderDate}</td>
                     <td>${order.supplier.perusahaan || contact}</td>
+                    <td>${formattedReceivedDate}</td>
                     <td>${order.lokasi_penerimaan || '-'}</td>
                     <td>${totalOrdered}</td>
                     <td>${totalReceived}</td>
-                    <td>${formattedReceivedDate}</td>
-                    <td>${formatCurrency(order.total_dibayaran)}</td>
+                    <td>${formatCurrency(order.total_dibayarkan)}</td>
                     <td>${formattedPaymentDate}</td>
                     <td>${order.alat_pembayaran || '-'}</td>
                     <td><button class="btn btn-sm btn-outline-primary detail-btn" data-order-id="${order.id}">Detail</button></td>
@@ -1729,9 +1782,7 @@ async function loadLocationsForFilter() {
     }
 }
 
-// Apply selected filters
 function applyHistoryFilters() {
-    // Get current filter values based on active type
     switch(activeFilters.type) {
         case 'date':
             activeFilters.date.start = document.getElementById('startDate').value;
@@ -1748,21 +1799,18 @@ function applyHistoryFilters() {
             break;
     }
 
-    // Apply filters to the history data
     filterHistory();
 }
 
 // Filter history data based on active filters
 async function filterHistory() {
     try {
-        // Get filter values from activeFilters
         const startDate = activeFilters.type === 'date' ? activeFilters.date.start : null;
         const endDate = activeFilters.type === 'date' ? activeFilters.date.end : null;
         const supplierFilter = activeFilters.type === 'supplier' ? activeFilters.supplier : null;
         const paymentFilter = activeFilters.type === 'payment' ? activeFilters.payment : null;
         const locationFilter = activeFilters.type === 'location' ? activeFilters.location : null;
 
-        // Call your existing render function with filters
         await renderHistoryTable(
             startDate,
             endDate,
@@ -1798,17 +1846,18 @@ function resetFilters() {
     document.getElementById('paymentSelect').value = '';
     document.getElementById('locationSelect').value = '';
 
-    // Hide all filter sections
-    document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
-        section.classList.add('d-none');
-    });
+    // // Hide all filter sections
+    // document.querySelectorAll('#filterOptionsContainer > .row').forEach(section => {
+    //     section.classList.add('d-none');
+    // });
 
-    // Collapse the filter section
-    const filterCollapse = document.getElementById('filterCollapse');
-    const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
-    if (collapseInstance && !filterCollapse.classList.contains('collapse')) {
-        collapseInstance.hide();
-    }
+    // // Collapse the filter section
+    // const filterCollapse = document.getElementById('filterCollapse');
+    // const collapseInstance = bootstrap.Collapse.getInstance(filterCollapse);
+    // if (collapseInstance && !filterCollapse.classList.contains('collapse')) {
+    //     collapseInstance.hide();
+    // }
+    document.getElementById('filterCard').classList.add('d-none');
 
     // Refresh the history list without filters
     renderHistoryTable();
@@ -1818,21 +1867,19 @@ function resetFilters() {
 document.addEventListener('DOMContentLoaded', async() => {
     // Initialize variables
     const pembelianTabs = document.getElementById('pembelianTabs');
-    const addDataBtn = document.getElementById('addbtn');
     const ongoingTab = document.getElementById('ongoing-tab');
     const historyTab = document.getElementById('history-tab');
+    const addDataBtn = document.getElementById('addbtn');
 
+    // hide/show add btn based on tab
     pembelianTabs.addEventListener('click', function(e) {
         if (e.target && e.target.matches('#history-tab')) {
-            // Hide the add button when history tab is clicked
             addDataBtn.style.display = 'none';
         } else if (e.target && e.target.matches('#ongoing-tab')) {
-            // Show the add button when ongoing tab is clicked
             addDataBtn.style.display = 'inline-block';
         }
     });
 
-    // Initialize the page
     await initPage();
 
     document.getElementById('addProduct').addEventListener('click', addProductRow);
@@ -1841,7 +1888,7 @@ document.addEventListener('DOMContentLoaded', async() => {
     document.addEventListener('click', async (e) => {
         if (e.target.closest('.cancel-order')) {
             const orderId = e.target.closest('.cancel-order').dataset.orderId;
-            if (confirm('Yakin ingin membatalkan pesanan ini?')) {
+            if (confirm('Apakah Anda yakin ingin membatalkan pesanan ini?')) {
                 const { error } = await supabase
                     .from('pesanan_pembelian')
                     .delete()
@@ -1889,7 +1936,7 @@ document.addEventListener('DOMContentLoaded', async() => {
                     }
                 }
                 
-                // Update order status to 'selesai' after processing all items
+                // status --> 'selesai'
                 const { error } = await supabase
                     .from('pesanan_pembelian')
                     .update({ status_pesanan: 'selesai' })
@@ -1909,7 +1956,7 @@ document.addEventListener('DOMContentLoaded', async() => {
 
     async function initPage() {
         renderOngoingOrders();
-        initializeHistoryFilters(); // Changed from setupHistoryFilters to initializeHistoryFilters
+        await displayUnpaidNotice();
         
         if (addDataBtn) {
             addDataBtn.addEventListener('click', () => openOrderModal('add'));
@@ -1917,23 +1964,17 @@ document.addEventListener('DOMContentLoaded', async() => {
         
         if (ongoingTab) ongoingTab.addEventListener('click', renderOngoingOrders);
         if (historyTab) historyTab.addEventListener('click', () => {
-            // Reset filters and render history when tab is clicked
+            initializeHistoryFilters();
             resetFilters();
             renderHistoryTable();
         });
-        await displayUnpaidNotice();
     }
 
-    // Add event listener for filter apply button
-    document.getElementById('applyFilter')?.addEventListener('click', async () => {
-        await filterHistory();
-    });
-
-    // Add event listener for filter reset button
-    document.getElementById('resetFilter')?.addEventListener('click', async () => {
-        resetFilters();
-        await renderHistoryTable();
-    });
+    // // Add event listener for filter reset button
+    // document.getElementById('resetFilter')?.addEventListener('click', async () => {
+    //     resetFilters();
+    //     await renderHistoryTable();
+    // });
 });
 
 const modal = document.getElementById('orderModal');

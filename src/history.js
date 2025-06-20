@@ -1,6 +1,6 @@
 import supabase from './db_conn.js';
-import { processEntry, displayUnpaidNotice } from './import.js';
 import { checkAuth, initAuthStateListener } from './auth.js';
+import { processEntry, displayUnpaidNotice } from './import.js';
 
 initAuthStateListener();
 
@@ -283,27 +283,78 @@ async function loadTipeRiwayatEnum() {
 //     }
 // }
 
+function formatDateTime(datetimeStr) {
+    if (!datetimeStr) return null;
+    // Convert "YYYY-MM-DDTHH:MM" to ISO string (UTC)
+    return new Date(datetimeStr).toISOString();
+}
+
 async function handleFormSubmit(event) {
     event.preventDefault();
 
+    // Get form elements safely
+    const form = event.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
     const variantId = getVariantIdFromUrl();
-    const tanggal = document.getElementById('tanggal').value
-    const tipeRiwayat = document.getElementById('tipe_riwayat').value;
-    const quantity = parseInt(document.getElementById('qty').value, 10);
-    const harga = document.getElementById('harga') ? parseFloat(document.getElementById('harga').value) : 0;
+    const tanggal = formatDateTime(document.getElementById('tanggal')?.value);
+    const tipeRiwayat = document.getElementById('tipe_riwayat')?.value;
+    const quantityInput = document.getElementById('qty');
+    const quantity = quantityInput ? parseInt(quantityInput.value, 10) : 0;
+    const hargaInput = document.getElementById('harga');
+    const harga = hargaInput ? parseFloat(hargaInput.value) : 0;
+    
+    // Get modal safely
+    const modalElement = document.getElementById('historyModal');
+    const modal = modalElement ? bootstrap.Modal.getInstance(modalElement) : null;
 
+    // Validate required fields
     if (!variantId || !tipeRiwayat || !quantity) {
-        alert('Harap isi semua field yang diperlukan.');
+        showToast('Harap isi semua field yang diperlukan.', 'error');
         return;
     }
 
-    await processEntry({
-        variantId,
-        tipeRiwayat,
-        quantity,
-        harga,
-        tanggal
-    });
+    try {
+        // Show loading state if submit button exists
+        let originalBtnText = '';
+        if (submitBtn) {
+            originalBtnText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Memproses...';
+        }
+
+        // Process the entry
+        const result = await processEntry({
+            variantId,
+            type: tipeRiwayat,
+            quantity,
+            price: harga,
+            date: tanggal
+        });
+
+        if (result?.success) {
+            showToast('Entri berhasil diproses', 'success');
+            
+            // Close modal if exists
+            if (modal) modal.hide();
+            
+            // Refresh history data
+            await fetchStockHistory(variantId);
+            
+            // Reset form
+            form.reset();
+        } else {
+            showToast('Gagal memproses entri', 'error');
+        }
+    } catch (error) {
+        console.error('Error processing entry:', error);
+        showToast(`Gagal memproses entri: ${error.message}`, 'error');
+    } finally {
+        // Restore button state if submit button exists
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
+    }
 }
 
 async function fetchStockHistory(variantId) {
@@ -344,12 +395,13 @@ async function fetchStockHistory(variantId) {
             stockDisplay.textContent = `Stok saat ini: ${variant.jumlah_stok}`;
         }
 
-        // Fetch stock history
+        // Fetch stock history 
         const { data, error } = await supabase
             .from('riwayat_stok')
             .select('*')
             .eq('id_varian', variantId)
-            .order('tanggal', { ascending: false });
+            .order('tanggal', { ascending: false }) 
+            .order('id', { ascending: false });     
 
         if (error) {
             throw error;
@@ -400,14 +452,13 @@ const activeFilters = {
     tipe: null
 };
 
-// Initialize filter UI components
 function initializeFilters() {
     // Handle filter type selection
     const filterRadio = document.getElementById('filterTipe');
     if (filterRadio) {
         filterRadio.addEventListener('click', function(e) {
             if (this.checked && activeFilters.type === 'tipe') {
-                // Clicking the already selected radio should uncheck it
+                // uncheck
                 this.checked = false;
                 resetFilters();
                 return;
@@ -424,7 +475,6 @@ function initializeFilters() {
     document.getElementById('resetFilter')?.addEventListener('click', resetFilters);
 }
 
-// Update filter UI based on selected type
 async function updateFilterUI() {
     const container = document.getElementById('filterOptionsContainer');
     container.innerHTML = '';
@@ -451,7 +501,6 @@ async function updateFilterUI() {
     document.getElementById('resetFilter')?.addEventListener('click', resetFilters);
 }
 
-// Load tipe for filter
 async function loadTipeForFilter() {
     try {
         const { data, error } = await supabase.rpc('get_enum_values', { enum_name: 'tipe_riwayat' });
@@ -478,7 +527,6 @@ async function loadTipeForFilter() {
     }
 }
 
-// Apply selected filters
 function applyFilters() {
     // Reset previous filter values
     activeFilters.tipe = null;
@@ -491,7 +539,6 @@ function applyFilters() {
     filterTypes();
 }
 
-// Reset all filters
 function resetFilters() {
     const filterRadio = document.getElementById('filterTipe');
     if (filterRadio) filterRadio.checked = false;
@@ -527,8 +574,8 @@ async function filterTypes() {
         let query = supabase
             .from('riwayat_stok')
             .select('*')
-            .eq('id_varian', variantId)  // Now variantId is defined
-            .order('tanggal', { ascending: false });  // Changed to order by date
+            .eq('id_varian', variantId) 
+            .order('tanggal', { ascending: false });  
 
         if (activeFilters.type === 'tipe' && activeFilters.tipe) {
             query = query.eq('tipe_riwayat', activeFilters.tipe);
@@ -568,7 +615,7 @@ function updateHistoryTable(entries) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${entry.id}</td>
-            <td>${formatDate(history.tanggal)}</td>
+            <td>${formatDate(entry.tanggal)}</td>
             <td>${entry.tipe_riwayat.charAt(0).toUpperCase() + entry.tipe_riwayat.slice(1)}</td>
             <td>${entry.qty}</td>
             <td>${entry.saldo ?? '-'}</td>

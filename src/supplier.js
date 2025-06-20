@@ -1,138 +1,69 @@
 import supabase from './db_conn.js';
-import { displayUnpaidNotice } from './import.js';
 import { checkAuth, initAuthStateListener } from './auth.js';
+import { displayUnpaidNotice } from './import.js';
 
 initAuthStateListener();
 
 (async () => {
-    // Auth check - will redirect if not logged in
-    await checkAuth(); 
+    await checkAuth();
 })();
 
-let supplierTable;
-
-// data table
-function initializeDataTable() {
-    supplierTable = $('#supplierTable').DataTable({
-        dom: '<"top"<"row"<"col-md-6"l><"col-md-6 d-flex justify-content-end align-items-center"f>>>rt<"bottom"ip>',
-        language: {
-            search: "",
-            searchPlaceholder: "Cari Supplier",
-            lengthMenu: "Tampilkan _MENU_ entri per halaman",
-            info: "Menampilkan _START_ sampai _END_ dari _TOTAL_ entri",
-            paginate: {
-                first: "Pertama",
-                last: "Terakhir",
-                next: "Berikutnya",
-                previous: "Sebelumnya"
-            }
-        },
-        columnDefs: [
-            { width: "5%", targets: 0 }, // ID column
-            { width: "15%", targets: 1 }, // Perusahaan column
-            { width: "15%", targets: 2 }, // CP column
-            { width: "15%", targets: 3 }, // No HP column
-            { width: "15%", targets: 4 }, // Kota column
-            { width: "10%", targets: 5, orderable: false } // Action column
-        ],
-        columns: [
-            { data: 'id' },
-            { data: 'perusahaan' },
-            { data: 'cp' },
-            { data: 'no_hp' },
-            { data: 'kota' },
-            { 
-                data: null,
-                render: function(data, type, row) {
-                    return `
-                        <button class="btn btn-info btn-sm" onclick="showSupplierProducts(${row.id})">Produk</button>
-                        <button class="btn btn-primary btn-sm" onclick="window.editSupplier(${row.id})">Edit</button>
-                        <button class="btn btn-danger btn-sm" onclick="window.deleteSupplier(${row.id})">Delete</button>
-                    `;
-                }
-            }
-        ],
-        autoWidth: false, // Disable automatic width calculation
-        scrollX: true, // Enable horizontal scrolling if needed
-        fixedColumns: true // Keep column widths fixed
-    });
-}
-
-// Function to reset the form
 function resetForm() {
     const supplierForm = document.getElementById('supplierForm');
     if (supplierForm) {
-        supplierForm.reset(); // Reset all form fields
-        supplierForm.dataset.supplierId = ''; // Clear the supplier ID
-        document.getElementById('supplierModalLabel').textContent = 'Add Supplier'; // Reset modal title
-        document.getElementById('submitButton').textContent = 'Add Supplier'; // Reset submit button text
+        supplierForm.reset();
+        supplierForm.dataset.supplierId = '';
+        document.getElementById('supplierModalLabel').textContent = 'Add Supplier';
+        document.getElementById('submitButton').textContent = 'Add Supplier';
     }
 }
 
-// Function to show toast messages
 function showToast(message, type = 'success') {
     const toastContainer = document.getElementById('toastContainer');
-
-    // Create toast element
+    if (!toastContainer) {
+        console.error('Toast container not found!');
+        return;
+    }
+    
     const toast = document.createElement('div');
-    toast.classList.add('toast');
+    toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0`;
     toast.setAttribute('role', 'alert');
     toast.setAttribute('aria-live', 'assertive');
     toast.setAttribute('aria-atomic', 'true');
-
-    // Add background color based on type
-    toast.classList.add(type === 'success' ? 'bg-success' : 'bg-danger');
-    toast.classList.add('text-white');
-
-    // Toast body
-    const toastBody = document.createElement('div');
-    toastBody.classList.add('toast-body');
-    toastBody.textContent = message;
-
-    // Append body to toast
-    toast.appendChild(toastBody);
-
-    // Append toast to container
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
     toastContainer.appendChild(toast);
-
-    // Initialize Bootstrap toast
-    const bootstrapToast = new bootstrap.Toast(toast, {
+    const bsToast = new bootstrap.Toast(toast, {
         autohide: true,
-        delay: 3000, // Toast will disappear after 3 seconds
+        delay: 3000
     });
-
-    // Show toast
-    bootstrapToast.show();
-
-    // Remove toast from DOM after it hides
+    bsToast.show();
+    
     toast.addEventListener('hidden.bs.toast', () => {
         toast.remove();
     });
 }
 
-// Function to populate the "Kota" dropdown
 async function populateKotaDropdown() {
     const kotaDropdown = document.getElementById('kota');
 
-    if (!kotaDropdown) {
-        console.warn('Kota dropdown not found in the DOM.');
-        return;
-    }
+    if (!kotaDropdown) return;
 
     try {
-        // Fetch data from the "kota" table
         const { data, error } = await supabase
             .from('kota')
             .select('id, kota');
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        // Clear existing options and add a default option
         kotaDropdown.innerHTML = '<option value="" disabled selected>Pilih Kota</option>';
 
-        // Populate dropdown with cities
         data.forEach((kota) => {
             const optionElement = document.createElement('option');
             optionElement.value = kota.id;
@@ -141,245 +72,95 @@ async function populateKotaDropdown() {
         });
     } catch (error) {
         console.error('Error fetching cities:', error.message);
-        showToast('Failed to load cities. Please try again.', 'error');
+        showToast('Gagal memuat kota. Silahkan coba lagi.', 'error');
     }
 }
 
-// Function to handle form submission (for both add and edit)
-// async function handleFormSubmit() {
-//     const perusahaan = document.getElementById('perusahaan').value;
-//     const sales = document.getElementById('sales').value;
-//     const no_hp = document.getElementById('no_hp').value;
-//     const id_kota = document.getElementById('kota').value;
-//     const supplierId = document.getElementById('supplierForm').dataset.supplierId;
-
-//     try {
-//         if (supplierId) {
-//             // Update existing supplier
-//             const { data, error } = await supabase
-//                 .from('supplier')
-//                 .update({
-//                     perusahaan: perusahaan,
-//                     sales: sales,
-//                     no_hp: no_hp,
-//                     id_kota: id_kota,
-//                 })
-//                 .eq('id', supplierId);
-
-//             if (error) {
-//                 throw error;
-//             }
-
-//             showToast('Supplier updated successfully!', 'success');
-//         } else {
-//             // Insert new supplier
-//             const { data, error } = await supabase
-//                 .from('supplier')
-//                 .insert([
-//                     {
-//                         perusahaan: perusahaan,
-//                         sales: sales,
-//                         no_hp: no_hp,
-//                         id_kota: id_kota,
-//                     },
-//                 ]);
-
-//             if (error) {
-//                 throw error;
-//             }
-
-//             showToast('Supplier added successfully!', 'success');
-//         }
-
-//         // Close the modal
-//         const modal = bootstrap.Modal.getInstance(document.getElementById('supplierModal'));
-//         modal.hide();
-
-//         // Refresh the supplier list
-//         await fetchSuppliers();
-//     } catch (error) {
-//         console.error('Error saving supplier:', error.message);
-//         showToast('Failed to save supplier. Please try again.', 'error');
-//     }
-// }
-
-// Function to handle form submission (for both add and edit)
 async function handleFormSubmit() {
-    const perusahaan = document.getElementById('perusahaan').value;
-    const cp = document.getElementById('cp').value;
-    const no_hp = document.getElementById('no_hp').value;
-    const id_kota = document.getElementById('kota').value;
-    const supplierId = document.getElementById('supplierForm').dataset.supplierId;
-
     try {
+        const perusahaan = document.getElementById('perusahaan').value;
+        const cp = document.getElementById('cp').value;
+        const no_hp = document.getElementById('no_hp').value;
+        const id_kota = document.getElementById('kota').value;
+        const supplierId = document.getElementById('supplierForm').dataset.supplierId;
+
         if (supplierId) {
-            // Update existing supplier
-            const { data, error } = await supabase
+            const {error} = await supabase
                 .from('supplier')
-                .update({
-                    perusahaan: perusahaan,
-                    cp: cp,
-                    no_hp: no_hp,
-                    id_kota: id_kota,
-                })
+                .update({ perusahaan, cp, no_hp, id_kota })
                 .eq('id', supplierId);
 
             if (error) {
                 throw error;
             }
 
-            showToast('Supplier updated successfully!', 'success');
+            showToast('Data supplier berhasil diperbarui!', 'success');
         } else {
-            // Insert new supplier
-            const { data, error } = await supabase
+            const {error} = await supabase
                 .from('supplier')
-                .insert([
-                    {
-                        perusahaan: perusahaan,
-                        cp: cp,
-                        no_hp: no_hp,
-                        id_kota: id_kota,
-                    },
-                ]);
+                .insert([{ perusahaan, cp, no_hp, id_kota }]);
 
             if (error) {
                 throw error;
             }
 
-            showToast('Supplier added successfully!', 'success');
+            showToast('Data supplier berhasil ditambahkan!', 'success');
         }
-
-        // Close the modal
+        
         const modal = bootstrap.Modal.getInstance(document.getElementById('supplierModal'));
         modal.hide();
-
-        // Refresh the supplier list
+        
         await fetchSuppliers();
+        
     } catch (error) {
-        console.error('Error saving supplier:', error.message);
-        showToast('Failed to save supplier. Please try again.', 'error');
+        console.error('Error:', error);
+        showToast('Gagal menyimpan supplier, silahkan coba lagi.', 'error');
     }
 }
 
-// Function to edit a supplier
 async function editSupplier(supplierId) {
     try {
-        // Fetch supplier data by ID
         const { data, error } = await supabase
             .from('supplier')
             .select('*')
             .eq('id', supplierId)
             .single();
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
-        // Populate the form with the fetched data
         document.getElementById('perusahaan').value = data.perusahaan;
         document.getElementById('cp').value = data.cp;
         document.getElementById('no_hp').value = data.no_hp;
         document.getElementById('kota').value = data.id_kota;
 
-        // Change the modal title and submit button text
         document.getElementById('supplierModalLabel').textContent = 'Edit Supplier';
         document.getElementById('submitButton').textContent = 'Update Supplier';
-
-        // Store the supplier ID in a hidden field or data attribute
         document.getElementById('supplierForm').dataset.supplierId = supplierId;
 
-        // Open the modal
         const modal = new bootstrap.Modal(document.getElementById('supplierModal'));
         modal.show();
     } catch (error) {
         console.error('Error fetching supplier:', error.message);
-        showToast('Failed to load supplier data. Please try again.', 'error');
+        showToast('Gagal memuat data supplier. Silahkan coba lagi.', 'error');
     }
 }
 
-// Function to delete a supplier
 async function deleteSupplier(supplierId) {
-    if (confirm('Are you sure you want to delete this supplier?')) {
+    if (confirm('Apakah Anda yakin ingin menghapus supplier ini?')) {
         try {
-            const { data, error } = await supabase
+            await supabase
                 .from('supplier')
                 .delete()
                 .eq('id', supplierId);
 
-            if (error) {
-                throw error;
-            }
-
-            // Refresh the supplier list
             await fetchSuppliers();
-            showToast('Supplier deleted successfully!', 'success');
+            showToast('Supplier berhasil dihapus!', 'success');
         } catch (error) {
             console.error('Error deleting supplier:', error.message);
-            showToast('Failed to delete supplier. Please try again.', 'error');
+            showToast('Gagal menghapus supplier. Silahkan coba lagi.', 'error');
         }
     }
 }
-
-// Function to fetch and display suppliers
-// DATA TABLE
-// async function fetchSuppliers() {
-//     // const supplierTableBody = document.getElementById('supplierTableBody');
-
-//     // if (!supplierTableBody) return;
-
-//     try {
-//         $('#supplierTableBody').html(`
-//             <tr>
-//                 <td colspan="6" class="text-center">
-//                     <div class="spinner-border spinner-border-sm" role="status">
-//                         <span class="visually-hidden">Loading...</span>
-//                     </div>
-//                     Memuat supplier...
-//                 </td>
-//             </tr>`);
-
-//         // Fetch data from Supabase
-//         const { data, error } = await supabase
-//             .from('supplier')
-//             .select(`
-//                 id,
-//                 perusahaan,
-//                 cp,
-//                 no_hp,
-//                 kota: id_kota (kota)
-//             `);
-
-//         if (error) throw error;
-
-//         // Format data for DataTables
-//         const formattedData = data.map(supplier => ({
-//             id: supplier.id,
-//             perusahaan: supplier.perusahaan || '-',
-//             cp: supplier.cp,
-//             no_hp: supplier.no_hp || '-',
-//             kota: supplier.kota?.kota || '-',
-//             id: supplier.id // Needed for action buttons
-//         }));
-
-//         // Clear and redraw table
-//         if (supplierTable) {
-//             supplierTable.clear().rows.add(formattedData).draw();
-//         } else {
-//             initializeDataTable();
-//             supplierTable.rows.add(formattedData).draw();
-//         }
-
-//     } catch (error) {
-//         console.error('Error fetching suppliers:', error.message);
-//         showToast('Failed to load suppliers. Please try again.', 'error');
-//         $('#supplierTableBody').html(`
-//             <tr>
-//                 <td colspan="6" class="text-center text-danger">
-//                     Gagal memuat data supplier
-//                 </td>
-//             </tr>`);
-//     }
-// }
 
 async function fetchSuppliers() {
     const supplierTableBody = document.getElementById('supplierTableBody');
@@ -409,11 +190,10 @@ async function fetchSuppliers() {
 
         if (error) throw error;
 
-        // Clear existing table rows
         supplierTableBody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            modalProductTable.innerHTML = `
+            supplierTableBody.innerHTML = `
                 <tr>
                     <td colspan="6" class="text-center text-muted">
                         Tidak ada supplier ditemukan
@@ -422,23 +202,20 @@ async function fetchSuppliers() {
             return;
         }
 
-        // Populate the table with bakul data
         data.forEach((supplier) => {
             const row = document.createElement('tr');
-
             row.innerHTML = `
                 <td>${supplier.id}</td>
-                <td>${supplier.perusahaan ? supplier.perusahaan : '-'}</td>
-                <td>${supplier.cp ? supplier.cp : '-'}</td>
-                <td>${supplier.no_hp ? supplier.no_hp : '-'}</td> 
-                <td>${supplier.kota?.kota ? supplier.kota.kota : '-'}</td> 
+                <td>${supplier.perusahaan || '-'}</td>
+                <td>${supplier.cp || '-'}</td>
+                <td>${supplier.no_hp || '-'}</td>
+                <td>${supplier.kota?.kota || '-'}</td>
                 <td>
                     <button class="btn btn-info btn-sm" onclick="showSupplierProducts(${supplier.id})">Produk</button>
                     <button class="btn btn-primary btn-sm" onclick="editSupplier(${supplier.id})">Edit</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSupplier(${supplier.id})">Delete</button>
                 </td>
             `;
-
             supplierTableBody.appendChild(row);
         });
     } catch (error) {
@@ -453,6 +230,7 @@ const activeFilters = {
     type: null,
     kota: null
 };
+
 
 // Initialize filter UI components
 function initializeFilters() {
@@ -471,21 +249,24 @@ function initializeFilters() {
         });
     }
 
+
     // Apply filter button
     document.getElementById('applyFilter')?.addEventListener('click', applyFilters);
+
 
     // Reset filter button
     document.getElementById('resetFilter')?.addEventListener('click', resetFilters);
 }
 
+
 // Update filter UI based on selected type
 async function updateFilterUI() {
     const container = document.getElementById('filterOptionsContainer');
     container.innerHTML = '';
-    
+   
     // Show filter card
     document.getElementById('filterCard').classList.remove('d-none');
-    
+   
     // Only kota filter available
     container.innerHTML = `
         <div class="mb-3">
@@ -498,13 +279,15 @@ async function updateFilterUI() {
             <button class="btn btn-sm btn-primary me-2" id="applyFilter">Terapkan</button>
             <button class="btn btn-sm btn-outline-secondary" id="resetFilter">Reset</button>
         </div>`;
-    
+   
     await loadKotaForFilter();
+
 
     // Reattach event listeners for new buttons
     document.getElementById('applyFilter')?.addEventListener('click', applyFilters);
     document.getElementById('resetFilter')?.addEventListener('click', resetFilters);
 }
+
 
 // Load kota for filter
 async function loadKotaForFilter() {
@@ -516,10 +299,13 @@ async function loadKotaForFilter() {
             .not('id_kota', 'is', null) // Exclude null values
             .order('id_kota', { ascending: true });
 
+
         if (supplierError) throw supplierError;
+
 
         // Extract just the kota IDs
         const kotaIds = [...new Set(supplierKotas.map(item => item.id_kota))];
+
 
         // Now get kota details only for these IDs
         const { data: kotaData, error: kotaError } = await supabase
@@ -528,11 +314,12 @@ async function loadKotaForFilter() {
             .in('id', kotaIds) // Only cities used by suppliers
             .order('kota', { ascending: true });
 
+
         if (kotaError) throw kotaError;
-        
+       
         const select = document.getElementById('dropdownKota');
         select.innerHTML = '<option value="">Pilih Kota</option>';
-        
+       
         kotaData.forEach(kota => {
             const option = document.createElement('option');
             option.value = kota.id;
@@ -545,19 +332,23 @@ async function loadKotaForFilter() {
     }
 }
 
+
 // Apply selected filters
 function applyFilters() {
     // Reset previous filter values
     activeFilters.kota = null;
+
 
     // Get current filter values
     if (activeFilters.type === 'kota') {
         activeFilters.kota = document.getElementById('dropdownKota').value;
     }
 
+
     // Apply filters to the table
     filterSuppliers();
 }
+
 
 // Reset all filters
 function resetFilters() {
@@ -565,21 +356,25 @@ function resetFilters() {
     const filterRadio = document.getElementById('filterKota');
     if (filterRadio) filterRadio.checked = false;
 
+
     // Reset active filters
     activeFilters.type = null;
     activeFilters.kota = null;
 
+
     // Hide filter card
     document.getElementById('filterCard').classList.add('d-none');
+
 
     // Refresh the supplier list
     fetchSuppliers();
 }
 
+
 // Filter suppliers based on active filters
 async function filterSuppliers() {
     const tbody = document.getElementById('supplierTableBody');
-    
+   
     try {
         tbody.innerHTML = `
             <tr>
@@ -591,27 +386,32 @@ async function filterSuppliers() {
                 </td>
             </tr>`;
 
+
         let query = supabase
             .from('supplier')
             .select(`
-                id, 
-                perusahaan, 
-                cp, 
+                id,
+                perusahaan,
+                cp,
                 no_hp,
                 kota:id_kota(kota)
             `)
             .order('id', { ascending: true });
+
 
         // Apply kota filter if active
         if (activeFilters.type === 'kota' && activeFilters.kota) {
             query = query.eq('id_kota', activeFilters.kota);
         }
 
+
         const { data: suppliers, error } = await query;
         if (error) throw error;
 
+
         // Update the table
         updateSupplierTable(suppliers);
+
 
     } catch (error) {
         console.error('Error filtering suppliers:', error);
@@ -625,10 +425,11 @@ async function filterSuppliers() {
     }
 }
 
+
 // search functions
 async function performSearch() {
     const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-    
+   
     try {
         const tbody = document.getElementById('supplierTableBody');
         tbody.innerHTML = `
@@ -641,22 +442,25 @@ async function performSearch() {
                 </td>
             </tr>`;
 
+
         // Base query with kota filter if active
         let baseQuery = supabase
             .from('supplier')
             .select(`
-                id, 
-                perusahaan, 
-                cp, 
+                id,
+                perusahaan,
+                cp,
                 no_hp,
                 kota:id_kota(kota)
             `)
             .order('id', { ascending: true });
 
+
         // Apply kota filter if active
         if (activeFilters.type === 'kota' && activeFilters.kota) {
             baseQuery = baseQuery.eq('id_kota', activeFilters.kota);
         }
+
 
         // 1. Search suppliers by direct fields (perusahaan, cp, no_hp)
         const directSearchQuery = baseQuery;
@@ -664,6 +468,7 @@ async function performSearch() {
             directSearchQuery.or(`perusahaan.ilike.%${searchTerm}%,cp.ilike.%${searchTerm}%,no_hp.ilike.%${searchTerm}%`);
         }
         const { data: suppliersDirect, error: directError } = await directSearchQuery;
+
 
         // 2. Search suppliers by kota name (only if searching and no kota filter already applied)
         let suppliersByKota = [];
@@ -673,12 +478,14 @@ async function performSearch() {
                 .select('id, kota')
                 .ilike('kota', `%${searchTerm}%`);
 
+
             if (!kotaError && kotaResults?.length > 0) {
                 const kotaIds = kotaResults.map(k => k.id);
                 const { data, error } = await baseQuery.in('id_kota', kotaIds);
                 if (!error) suppliersByKota = data || [];
             }
         }
+
 
         // Combine results (if searching) or use direct results (if just filtering)
         let resultsToDisplay;
@@ -697,8 +504,10 @@ async function performSearch() {
             resultsToDisplay = suppliersDirect || [];
         }
 
+
         // Update the table with final results
         updateSupplierTable(resultsToDisplay);
+
 
     } catch (error) {
         console.error('Error searching suppliers:', error);
@@ -712,10 +521,12 @@ async function performSearch() {
     }
 }
 
+
 // Update supplier table display
 function updateSupplierTable(suppliers) {
     const tbody = document.getElementById('supplierTableBody');
     tbody.innerHTML = '';
+
 
     if (!suppliers || suppliers.length === 0) {
         tbody.innerHTML = `
@@ -726,6 +537,7 @@ function updateSupplierTable(suppliers) {
             </tr>`;
         return;
     }
+
 
     suppliers.forEach(supplier => {
         const row = document.createElement('tr');
@@ -745,11 +557,12 @@ function updateSupplierTable(suppliers) {
     });
 }
 
+
 // Search icon and clear functions
 function updateSearchIcon() {
     const searchInput = document.getElementById('searchInput');
     const searchIcon = document.getElementById('searchIcon');
-    
+   
     if (searchInput.value.trim()) {
         searchIcon.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x" viewBox="0 0 16 16">
@@ -763,15 +576,16 @@ function updateSearchIcon() {
     }
 }
 
+
 function clearSearch() {
     document.getElementById('searchInput').value = '';
     updateSearchIcon();
     filterSuppliers(); // Maintain active filters when clearing search
 }
 
+
 async function showSupplierProducts(supplierId) {
     try {
-        // 1. Fetch supplier details for modal title
         const { data: supplier, error: supplierError } = await supabase
             .from('supplier')
             .select('perusahaan')
@@ -780,7 +594,6 @@ async function showSupplierProducts(supplierId) {
         
         if (supplierError) throw supplierError;
 
-        // 2. Fetch product variants
         const { data: products, error: productsError } = await supabase
             .from('produk')
             .select(`
@@ -796,17 +609,14 @@ async function showSupplierProducts(supplierId) {
 
         if (productsError) throw productsError;
 
-        console.log(products);
-
-        // 3. Update modal title
         document.getElementById('supplierProductsModalLabel').textContent = 
             `Produk dari ${supplier.perusahaan}`;
 
         const tbody = document.getElementById('supplierProductsTableBody');
+        tbody.innerHTML = '';
 
         products.forEach(product => {
             if (product.var && product.var.length > 0) {
-                // Add product row
                 const productRow = document.createElement('tr');
                 productRow.innerHTML = `
                     <td colspan="5" class="fw-bold bg-light">
@@ -815,7 +625,6 @@ async function showSupplierProducts(supplierId) {
                 `;
                 tbody.appendChild(productRow);
 
-                // Add variant rows
                 product.var.forEach(variant => {
                     const variantRow = document.createElement('tr');
                     variantRow.innerHTML = `
@@ -827,28 +636,21 @@ async function showSupplierProducts(supplierId) {
             }
         });
 
-        // 5. Show modal
         const modal = new bootstrap.Modal(document.getElementById('supplierProductsModal'));
         modal.show();
 
     } catch (error) {
         console.error('Error fetching supplier products:', error);
-        showToast('Failed to load supplier products', 'error');
+        showToast('Gagal memuat produk milik supplier', 'error');
     }
 }
 
-
 document.addEventListener('DOMContentLoaded', async () => {
-    // Fetch cities from the "kota" table and populate the dropdown
     await populateKotaDropdown();
-    initializeDataTable();
     await fetchSuppliers();
     await displayUnpaidNotice();
-
-    // Initialize filters
     initializeFilters();
 
-    // Handle form submission
     const supplierForm = document.getElementById('supplierForm');
     if (supplierForm) {
         supplierForm.addEventListener('submit', async (event) => {
@@ -857,7 +659,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Reset form when modal is hidden
     const supplierModal = document.getElementById('supplierModal');
     if (supplierModal) {
         supplierModal.addEventListener('hidden.bs.modal', () => {
@@ -865,7 +666,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Search functionality (updated to match product.js behavior)
+    // Search functionality
     const searchInput = document.getElementById('searchInput');
     const searchButton = document.getElementById('searchButton');
     
@@ -893,7 +694,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Expose editProduct to the global scope
 window.editSupplier = editSupplier;
 window.deleteSupplier = deleteSupplier;
 window.showSupplierProducts = showSupplierProducts;

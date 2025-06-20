@@ -1,18 +1,25 @@
-export async function loadNavbar() {
+import { setupLogout } from './navbar.js';
+
+async function loadNavbar() {
     try {
-        // Load HTML
         const response = await fetch("navbar.html");
         const html = await response.text();
-        document.getElementById("navbar").innerHTML = html;
-        
-        // Load and execute JS
-        const { setupLogout } = await import('./navbar.js');
-        if (setupLogout) {
-            setupLogout();
-        } else {
-            console.error('setupLogout not found in navbar.js');
-        }
+        const navbarEl = document.getElementById("navbar");
+        navbarEl.innerHTML = html;
+
+        // Wait for dynamic elements to exist
+        const observer = new MutationObserver(() => {
+            if (document.getElementById("logout-link")) {
+                setupLogout();
+                observer.disconnect();
+            }
+        });
+        observer.observe(navbarEl, { childList: true, subtree: true });
     } catch (error) {
         console.error('Error loading navbar:', error);
     }
+}
+
+export {
+    loadNavbar
 }

@@ -23,39 +23,31 @@ function resetForm() {
 // Function to show toast messages
 function showToast(message, type = 'success') {
     const toastContainer = document.getElementById('toastContainer');
-
-    // Create toast element
+    if (!toastContainer) {
+        console.error('Toast container not found!');
+        return;
+    }
+    
     const toast = document.createElement('div');
-    toast.classList.add('toast');
+    toast.className = `toast align-items-center text-white bg-${type === 'success' ? 'success' : 'danger'} border-0`;
     toast.setAttribute('role', 'alert');
     toast.setAttribute('aria-live', 'assertive');
     toast.setAttribute('aria-atomic', 'true');
-
-    // Add background color based on type
-    toast.classList.add(type === 'success' ? 'bg-success' : 'bg-danger');
-    toast.classList.add('text-white');
-
-    // Toast body
-    const toastBody = document.createElement('div');
-    toastBody.classList.add('toast-body');
-    toastBody.textContent = message;
-
-    // Append body to toast
-    toast.appendChild(toastBody);
-
-    // Append toast to container
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
     toastContainer.appendChild(toast);
-
-    // Initialize Bootstrap toast
-    const bootstrapToast = new bootstrap.Toast(toast, {
+    const bsToast = new bootstrap.Toast(toast, {
         autohide: true,
-        delay: 3000, // Toast will disappear after 3 seconds
+        delay: 3000
     });
-
-    // Show toast
-    bootstrapToast.show();
-
-    // Remove toast from DOM after it hides
+    bsToast.show();
+    
     toast.addEventListener('hidden.bs.toast', () => {
         toast.remove();
     });
@@ -105,7 +97,6 @@ async function handleFormSubmit() {
 
     try {
         if (bakulId) {
-            // Update existing supplier
             const { data, error } = await supabase
                 .from('bakul')
                 .update({
@@ -146,7 +137,7 @@ async function handleFormSubmit() {
         // Refresh the supplier list
         await fetchBakul();
     } catch (error) {
-        console.error('Error saving supplier:', error.message);
+        console.error('Error saving bakul:', error.message);
         showToast('Gagal menyimpan data bakul, silahkan coba lagi.', 'error');
     }
 }
@@ -260,8 +251,8 @@ async function fetchBakul() {
             row.innerHTML = `
                 <td>${bakul.id}</td>
                 <td>${bakul.nama}</td>
-                <td>${bakul.no_hp ? bakul.no_hp : '-'}</td> <!-- Handle null for no_hp -->
-                <td>${bakul.kota?.kota ? bakul.kota.kota : '-'}</td> <!-- Handle null for kota -->
+                <td>${bakul.no_hp ? bakul.no_hp : '-'}</td>
+                <td>${bakul.kota?.kota ? bakul.kota.kota : '-'}
                 <td>
                     <button class="btn btn-primary btn-sm" onclick="editBakul(${bakul.id})">Edit</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteBakul(${bakul.id})">Delete</button>
@@ -337,17 +328,33 @@ async function updateFilterUI() {
 // Load kota for filter
 async function loadKotaForFilter() {
     try {
-        const { data, error } = await supabase
+        const { data: bakulKota, error: bkError } = await supabase
+            .from('bakul')
+            .select('id_kota') 
+            .not('id_kota', 'is', null)
+            .order('id_kota', { ascending: true });
+
+
+        if (bkError) throw bkError;
+
+        // Extract just the kota IDs
+        const kotaIds = [...new Set(bakulKota.map(item => item.id_kota))];
+
+
+        // Now get kota details only for these IDs
+        const { data: kotaData, error: kotaError } = await supabase
             .from('kota')
             .select('id, kota')
+            .in('id', kotaIds)
             .order('kota', { ascending: true });
 
-        if (error) throw error;
+
+        if (kotaError) throw kotaError;
         
         const select = document.getElementById('dropdownKota');
         select.innerHTML = '<option value="">Pilih Kota</option>';
         
-        data.forEach(kota => {
+        kotaData.forEach(kota => {
             const option = document.createElement('option');
             option.value = kota.id;
             option.textContent = kota.kota;
@@ -387,7 +394,7 @@ function resetFilters() {
     document.getElementById('filterCard').classList.add('d-none');
 
     // Refresh the supplier list
-    fetchSuppliers();
+    fetchBakul();
 }
 
 // Filter suppliers based on active filters
@@ -581,7 +588,6 @@ function clearSearch() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     await displayUnpaidNotice();
-    // Fetch cities from the "kota" table and populate the dropdown
     await populateKotaDropdown();
     await fetchBakul();
 
@@ -632,6 +638,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Expose editProduct to the global scope
+// global scope
 window.editBakul = editBakul;
 window.deleteBakul = deleteBakul;

@@ -86,9 +86,20 @@
 <body>
     <div id="navbar"></div>
     <script type="module">
-        import { loadNavbar } from './src/navbarLoad.js';
-        loadNavbar();
+        fetch("navbar.html")
+            .then(response => response.text())
+            .then(async (html) => {
+                document.getElementById("navbar").innerHTML = html;
+                const navbar = await import('./src/navbar.js');
+                navbar.setupLogout(); 
+            })
+            .catch(error => console.error('Error loading navbar:', error));
     </script>
+
+    <div id="toastContainer" aria-live="polite" aria-atomic="true" class="toast-container position-fixed top-0 end-0 p-3">
+        <!-- Toast messages will be dynamically inserted here -->
+    </div>
+
 
     <div class="container mt-4" id="main-content">
         <div id="unpaidBannerRow" class="row mb-3">

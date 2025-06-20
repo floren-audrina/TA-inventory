@@ -17,10 +17,8 @@ if (menuToggle && sidebar) {
     });
 }
 
-export function setupLogout() {
-    const logoutLink = document.getElementById('logout-link') || 
-                       document.querySelector('[data-logout]') ||
-                       document.querySelector('a[href*="logout"]');
+function setupLogout() {
+    const logoutLink = document.getElementById('logout-link');
 
     if (!logoutLink) {
         console.error('Logout link not found!');
@@ -37,4 +35,8 @@ export function setupLogout() {
             window.location.href = '/index.html';
         }
     });
+}
+
+export {
+    setupLogout
 }
